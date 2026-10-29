@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "WSL 侧栏",
+    "description": "在侧边栏浏览 WSL 发行版目录，把 \\wsl.localhost 下的目录打开为工作区，并用自带的 wslx-* 工具在发行版里运行 Linux 原生命令。"
+  }
+}

@@ -1,0 +1,4 @@
+- insert:
+    - id: wsl-sidebar
+      name: 'dsh-wsl-sidebar'
+      config: {}

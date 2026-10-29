@@ -1,0 +1,42 @@
+{
+  "name": "dsh-wsl-sidebar",
+  "version": "1.6.0",
+  "description": "WSL settings page and wslx-* tools for DeepSeek Harness: pick a distribution, browse Linux directories, open them as workspaces, and run native Linux commands inside.",
+  "license": "MIT",
+  "author": "王嘉龙 <1462604987@qq.com>",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek",
+    "harness",
+    "wsl",
+    "windows",
+    "workspace"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/en.json",
+    "locale/zh.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  }
+}

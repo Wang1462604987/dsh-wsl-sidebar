@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "WSL Sidebar",
+    "description": "Browse WSL distros from the sidebar, open a workspace inside \\wsl.localhost, and run native Linux commands in the distro with the bundled wslx-* tools."
+  }
+}
