@@ -116,10 +116,25 @@ side of the boundary, as native Linux commands.
 
 ## Install
 
-The plugin is a bundle-layer plugin: copying the folder into a profile's
-`node_modules` (or linking it, `link:E:/project/dsh-plug/wsl-sidebar-plugin`)
-and keeping the `wsl-sidebar` row enabled in the profile's `cordis.patch.yml` is
-enough. Restart the Harness afterwards: the client half is bundled at boot.
+From the public repository — one command, no build step and no `allowBuilds`
+prompt, because the package ships plain ESM:
+
+```sh
+dsh plugin add github:Wang1462604987/dsh-wsl-sidebar
+```
+
+or the same plugin from npm:
+
+```sh
+dsh plugin add dsh-wsl-sidebar
+```
+
+Restart the Harness afterwards: the client half is bundled at boot, so a reload
+is not enough.
+
+For local development, copying the folder into a profile's `node_modules` (or
+linking it, `link:/path/to/dsh-wsl-sidebar`) and keeping the `wsl-sidebar` row
+enabled in the profile's `cordis.patch.yml` is enough.
 
 `node scripts/selfcheck.mjs [distro]` re-checks the parts that have broken
 before: UNC path mapping, workspace-driven distro choice, `asRoot` reaching uid

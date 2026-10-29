@@ -4,6 +4,14 @@
   "description": "WSL settings page and wslx-* tools for DeepSeek Harness: pick a distribution, browse Linux directories, open them as workspaces, and run native Linux commands inside.",
   "license": "MIT",
   "author": "王嘉龙 <1462604987@qq.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wang1462604987/dsh-wsl-sidebar.git"
+  },
+  "homepage": "https://github.com/Wang1462604987/dsh-wsl-sidebar#readme",
+  "bugs": {
+    "url": "https://github.com/Wang1462604987/dsh-wsl-sidebar/issues"
+  },
   "keywords": [
     "dsh",
     "dsh-plugin",
