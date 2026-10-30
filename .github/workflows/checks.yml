@@ -1,0 +1,25 @@
+name: checks
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  offline:
+    name: offline checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: syntax
+        shell: bash
+        run: |
+          set -e
+          for file in index.js client.js lib/*.js scripts/*.mjs; do
+            node --check "$file"
+          done
+      - name: panel harness
+        run: node scripts/rendercheck.mjs

@@ -52,6 +52,14 @@ window.__ModuleLoader__.load({
 				restartNow: { en: "Restart WSL now", zh: "立即重启 WSL" },
 				later: { en: "Later", zh: "稍后" },
 				confirmShutdownTitle: { en: "Restart WSL?", zh: "确认重启 WSL?" },
+				confirmTitle: { en: "This cannot be undone", zh: "此操作不可撤销" },
+				confirmRun: { en: "Run it", zh: "确认执行" },
+				backupAt: { en: "Previous contents kept at", zh: "上一份内容已备份到" },
+				unsupported: { en: "WSL only exists on Windows", zh: "WSL 只在 Windows 上存在" },
+				unsupportedHint: {
+					en: "This Harness is running on a platform without wsl.exe, so the page stays empty. Nothing failed.",
+					zh: "当前 Harness 运行在没有 wsl.exe 的平台上，这个页面因此保持为空，并不是执行失败。"
+				},
 				confirmShutdownBody: {
 					en: "wsl --shutdown stops every running distribution and every background task this plugin keeps.",
 					zh: "wsl --shutdown 会终止所有正在运行的发行版，以及本插件保留的后台任务。"
@@ -265,7 +273,8 @@ window.__ModuleLoader__.load({
 			distros: "/__wsl_plugin__/admin/distros",
 			action: "/__wsl_plugin__/admin/action",
 			config: "/__wsl_plugin__/admin/config",
-			status: "/__wsl_plugin__/admin/status"
+			status: "/__wsl_plugin__/admin/status",
+			platform: "/__wsl_plugin__/platform"
 		};
 
 		async function requestJson(url, init) {
@@ -292,6 +301,29 @@ window.__ModuleLoader__.load({
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify(body ?? {})
 			});
+		}
+
+		/**
+		 * Ask the Host whether WSL can exist here at all.
+		 *
+		 * `null` while asking. A failed or missing answer counts as "supported": that
+		 * is what an older Host half looks like, and the tabs then report their own
+		 * errors instead of the whole page claiming the wrong platform.
+		 */
+		function usePlatform() {
+			const [platform, setPlatform] = React.useState(null);
+			React.useEffect(() => {
+				let alive = true;
+				requestJson(ADMIN.platform).then((data) => {
+					if (alive) setPlatform({ supported: data?.supported !== false, platform: String(data?.platform ?? "unknown") });
+				}).catch((error) => {
+					if (!alive) return;
+					report("platform-check-failed", { message: String(error?.message ?? error) });
+					setPlatform({ supported: true, platform: "unknown" });
+				});
+				return () => { alive = false; };
+			}, []);
+			return platform;
 		}
 
 		/** Human-readable byte size; the panel never shows raw byte counts outside a tooltip. */
@@ -341,6 +373,7 @@ window.__ModuleLoader__.load({
 			const [exportTarget, setExportTarget] = React.useState(null);
 			const [exportPath, setExportPath] = React.useState("");
 			const [exportOverwrite, setExportOverwrite] = React.useState(false);
+			const [confirmAsk, setConfirmAsk] = React.useState(null);
 
 			const load = React.useCallback(async () => {
 				try {
@@ -358,14 +391,24 @@ window.__ModuleLoader__.load({
 				load();
 			}, [load]);
 
-			const act = async (action, distro, extra) => {
-				setBusy(action + ":" + (distro ?? ""));
-				setLog(null);
+			/**
+			 * Run one panel action, and turn the Host's "ask first" answer into a modal.
+			 *
+			 * A deployment that does not run in danger-full-access refuses the
+			 * irreversible actions until the request repeats itself with `acknowledge`;
+			 * the confirm dialog below is what produces that second request.
+			 */
+			const perform = async (body) => {
 				try {
-					const data = await postJson(ADMIN.action, { action, distro, ...extra });
-					const text = (data?.command ?? action) + (data?.stdout ? "\n" + data.stdout : "") + (data?.stderr ? "\n" + data.stderr : "");
+					const data = await postJson(ADMIN.action, body);
+					const text = (data?.command ?? body.action) + (data?.stdout ? "\n" + data.stdout : "") + (data?.stderr ? "\n" + data.stderr : "");
 					setLog({ ok: data?.ok !== false, text });
+					if (body.action === "export") setExportTarget(null);
 				} catch (error) {
+					if (error?.data?.code === "needs-acknowledge") {
+						setConfirmAsk({ body, message: String(error.data.message ?? "") });
+						return;
+					}
 					const detail = error?.data?.stderr || error?.data?.stdout || "";
 					setLog({ ok: false, text: t("actionFailed") + ": " + String(error?.message ?? error) + (detail ? "\n" + detail : "") });
 				} finally {
@@ -374,24 +417,22 @@ window.__ModuleLoader__.load({
 				}
 			};
 
+			const act = async (action, distro, extra) => {
+				setBusy(action + ":" + (distro ?? ""));
+				setLog(null);
+				await perform({ action, distro, ...extra });
+			};
+
 			const startExport = async () => {
 				if (exportTarget === null) return;
 				setBusy("export:" + exportTarget);
-				try {
-					const data = await postJson(ADMIN.action, {
-						action: "export",
-						distro: exportTarget,
-						path: exportPath.trim(),
-						overwrite: exportOverwrite,
-						vhd: false
-					});
-					setLog({ ok: true, text: (data?.command ?? "export") + (data?.stdout ? "\n" + data.stdout : "") });
-					setExportTarget(null);
-				} catch (error) {
-					setLog({ ok: false, text: t("actionFailed") + ": " + String(error?.message ?? error) });
-				} finally {
-					setBusy(null);
-				}
+				await perform({
+					action: "export",
+					distro: exportTarget,
+					path: exportPath.trim(),
+					overwrite: exportOverwrite,
+					vhd: false
+				});
 			};
 
 			return h("div", { style: STYLE.body },
@@ -444,7 +485,24 @@ window.__ModuleLoader__.load({
 							t("overwrite")),
 						h("div", { style: STYLE.footer },
 							h(Btn, { style: STYLE.button, hoverStyle: STYLE.buttonHover, onClick: () => setExportTarget(null) }, t("cancel")),
-							h(Btn, { style: STYLE.primary, hoverStyle: STYLE.primaryHover, disabled: exportPath.trim().length === 0 || busy !== null, onClick: startExport }, busy === "export:" + exportTarget ? t("working") : t("exportDistro"))))
+							h(Btn, { style: STYLE.primary, hoverStyle: STYLE.primaryHover, disabled: exportPath.trim().length === 0 || busy !== null, onClick: startExport }, busy === "export:" + exportTarget ? t("working") : t("exportDistro")))),
+				confirmAsk === null
+					? null
+					: h(Modal, { title: t("confirmTitle"), onClose: () => setConfirmAsk(null) },
+						h("div", { style: STYLE.hint }, confirmAsk.message),
+						h("div", { style: STYLE.footer },
+							h(Btn, { style: STYLE.button, hoverStyle: STYLE.buttonHover, onClick: () => setConfirmAsk(null) }, t("cancel")),
+							h(Btn, {
+								style: STYLE.primary,
+								hoverStyle: STYLE.primaryHover,
+								onClick: () => {
+									const ask = confirmAsk;
+									setConfirmAsk(null);
+									setBusy(ask.body.action + ":" + (ask.body.distro ?? ""));
+									setLog(null);
+									perform({ ...ask.body, acknowledge: ask.body.action });
+								}
+							}, t("confirmRun"))))
 			);
 		}
 
@@ -517,7 +575,10 @@ window.__ModuleLoader__.load({
 						data = await postJson(ADMIN.config + "?" + query(), { mode: "fields", edits });
 					}
 					adopt(data);
-					setStatus({ ok: true, text: t("saved") + " · " + t("needsRestart") });
+					setStatus({
+						ok: true,
+						text: t("saved") + " · " + t("needsRestart") + (data?.backup ? "\n" + t("backupAt") + " " + data.backup : "")
+					});
 				} catch (error) {
 					report("admin-config-save-failed", { scope, distro, message: String(error?.message ?? error) });
 					setStatus({ ok: false, text: String(error?.message ?? error) });
@@ -529,7 +590,9 @@ window.__ModuleLoader__.load({
 			const restart = async () => {
 				setBusy(true);
 				try {
-					await postJson(ADMIN.action, { action: "shutdown" });
+					// The user reached this through the confirmation modal, so the request
+					// carries the acknowledgement the Host asks for on restricted deployments.
+					await postJson(ADMIN.action, { action: "shutdown", acknowledge: "shutdown" });
 					setStatus({ ok: true, text: t("saved") + " · " + t("confirmShutdownTitle") + " ✓" });
 					setAskRestart(false);
 				} catch (error) {
@@ -705,12 +768,19 @@ window.__ModuleLoader__.load({
 
 		function WslPanel(props) {
 			const t = makeT(props.ctx);
+			const platform = usePlatform();
 			const [tab, setTab] = React.useState("distros");
 			const tabs = [
 				["distros", t("tabDistros")],
 				["config", t("tabConfig")],
 				["runtime", t("tabRuntime")]
 			];
+			if (platform !== null && platform.supported === false) {
+				return h("div", { style: STYLE.panel },
+					h("div", { style: STYLE.body },
+						h("div", { style: STYLE.header }, t("unsupported")),
+						h("div", { style: STYLE.hint }, t("unsupportedHint") + " (" + platform.platform + ")")));
+			}
 			return h("div", { style: STYLE.panel },
 				h("div", { style: STYLE.tabBar, role: "tablist" }, tabs.map(([id, label]) => h(Btn, {
 					key: id,
@@ -857,7 +927,9 @@ window.__ModuleLoader__.load({
 		/** Compact entry in the new-session hero: pick a WSL folder instead of a Windows folder. */
 		function WslHeroEntry({ ctx }) {
 			const t = makeT(ctx);
+			const platform = usePlatform();
 			const [open, setOpen] = React.useState(false);
+			if (platform !== null && platform.supported === false) return null;
 			return h("div", { style: { display: "inline-flex" } },
 				h("button", {
 					type: "button",

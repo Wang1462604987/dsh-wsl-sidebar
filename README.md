@@ -27,9 +27,19 @@ keys. Saving **never restarts WSL**: the tab says so and offers a
 **立即重启 / Restart now** button that runs `wsl --shutdown` only after a second
 confirmation, because that kills every running distribution.
 
-These writes are your own clicks in the panel, so they do not pass the tool gate
-that guards `asRoot` and destructive commands — that gate exists for what the
-model asks to run.
+These writes are your own clicks in the panel, and the routes only answer to this
+browser's authenticated peer — but the buttons beside them can still destroy
+work, so the page carries its own gate: unless the deployment's default
+permission is `danger-full-access`, **stopping a distribution**, switching its
+WSL version, exporting a disk and `wsl --shutdown` each open a confirmation
+dialog, and the Host refuses the request until the retry carries the
+acknowledgement. That is not a sandbox (it cannot be: the model and this page
+share one browser peer); it is there so a stray click cannot stop the
+distribution your session is running in.
+
+Every write keeps the file it replaces: `.wslconfig` next to itself as
+`.wslconfig.bak-<date>`, `/etc/wsl.conf` as `/etc/wsl.conf.bak-<date>`, and the
+panel prints where the backup went.
 
 Every drop-down in the panel is drawn by the panel itself rather than by a native
 `<select>`: an OS-drawn popup picks its own colours, and its highlighted row is
@@ -143,13 +153,23 @@ task read by cursor.
 
 The console has its own checks that need no Harness and no browser:
 
+- `node scripts/rendercheck.mjs` — evaluates `client.js` against a miniature
+  React (hooks, effects, a `fetch` stub) and mounts the settings section, so a
+  broken panel is caught here instead of after a restart. It asserts the tabs,
+  the hover colours, the self-drawn drop-downs, the confirmation flow, the
+  backup line and the non-Windows notice. It needs nothing but Node.
 - `node scripts/mountcheck.mjs` — mounts `apply()` against a fake context,
-  exercises the tool gate, and drives all seven routes with fake request objects
-  (distros, config read/save, action validation, status sampling).
+  exercises the tool gate, platform guard and admin gate, and drives all eight
+  routes with fake request objects (distros, config read/save, action
+  validation, status sampling).
 - `node scripts/httpcheck.mjs` — starts a real `http.Server`, registers the same
   routes and calls them with `fetch`, so stream reading, status codes, headers
   and the 413/400 paths are checked the way the web server uses them. It writes
   `.wslconfig` and restores the original bytes before exiting.
+
+`.github/workflows/checks.yml` runs the syntax check and `rendercheck.mjs` on
+every push and pull request. The other three scripts need a real WSL, so they
+run locally (or on a Windows runner with a distribution installed).
 
 ## Coexistence with dsh-wsl-tool
 
@@ -168,10 +188,34 @@ own row — its id is `tool-wsl`, not the package name:
 
 ## Limits
 
+- Windows only. The Host half checks `process.platform` before it touches
+  anything, the routes answer `supported: false` elsewhere, and the page shows
+  that notice instead of three tabs full of failing `wsl.exe` calls.
 - No full-screen TUI: see the background-task section.
 - A task's output beyond 1 MiB is dropped from the front and reported as such.
 - The tools run as the Linux user of the distribution (or root with `asRoot`);
   there is no extra sandbox between the model and that user.
+
+## Troubleshooting
+
+- **No distributions listed.** WSL itself is missing or the `wsl.exe` on `PATH`
+  is a stub. Check `wsl.exe -l -v` in PowerShell first; the plugin only reports
+  what that command reports.
+- **A folder opens empty, or `\wsl.localhost\<distro>\...` does not resolve.**
+  WSL 1 distributions have no UNC path. Convert with
+  `wsl --set-version <distro> 2`.
+- **Nothing appears in Settings after `dsh plugin add`.** The client half is
+  bundled at boot; restart the Harness. A page reload cannot pick it up.
+- **`ops_bash` on a `\wsl.localhost\...` path fails with an ACL or sandbox
+  error.** That share is a 9p mount without Windows security descriptors, so the
+  host sandbox cannot describe it — a platform limitation, not a plugin bug.
+  Work through the `wslx-*` tools, which run inside the distribution.
+- **Writing `/etc/wsl.conf` fails.** The write runs as `wsl.exe -u root`; a
+  distribution with root login disabled (or a read-only `/etc`) rejects it.
+  Fix `/etc/wsl.conf` once by hand, then reload the page.
+- **Stop / version buttons do nothing.** Your deployment's default permission is
+  not `danger-full-access`, so the first click opens a confirmation dialog and
+  sends nothing until you confirm it.
 
 ## 权限与危险命令
 

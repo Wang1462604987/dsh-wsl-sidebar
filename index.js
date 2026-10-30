@@ -8,7 +8,9 @@
  */
 import { readdir } from "node:fs/promises";
 import { listDistros } from "./lib/wsl.js";
+import { AdminActionDenied, guardAdminAction } from "./lib/policy.js";
 import { createTools } from "./lib/tools.js";
+import { killAllTasks } from "./lib/tasks.js";
 import {
 	applyIniEdits,
 	configFields,
@@ -30,6 +32,10 @@ const ADMIN_DISTROS_PATH = "/__wsl_plugin__/admin/distros";
 const ADMIN_ACTION_PATH = "/__wsl_plugin__/admin/action";
 const ADMIN_CONFIG_PATH = "/__wsl_plugin__/admin/config";
 const ADMIN_STATUS_PATH = "/__wsl_plugin__/admin/status";
+const PLATFORM_PATH = "/__wsl_plugin__/platform";
+
+/** WSL is a Windows feature; everything this plugin does spawns wsl.exe. */
+const WINDOWS = process.platform === "win32";
 
 /** The composition's connection service (typed locally; its package is browser-side). */
 function connectionOf(ctx) {
@@ -88,6 +94,27 @@ async function readJsonBody(req) {
 }
 
 export function apply(ctx) {
+	// Every route below spawns wsl.exe, which only exists on Windows. The platform
+	// route stays mounted everywhere so the panel can say why it is empty instead of
+	// showing a page full of spawn ENOENT failures.
+	ctx.effect(() => ctx.webServer.register({
+		kind: "exact",
+		path: PLATFORM_PATH,
+		handler: async (req, res) => {
+			if (rejected(ctx, req, res)) return;
+			if (req.method !== "GET") {
+				sendMethodNotAllowed(res, "GET");
+				return;
+			}
+			sendJson(res, 200, { platform: process.platform, supported: WINDOWS });
+		}
+	}), `wsl-sidebar: GET ${PLATFORM_PATH}`);
+
+	if (!WINDOWS) {
+		console.error(`[wsl-sidebar] WSL only exists on Windows; the panel is inert on ${process.platform}`);
+		return;
+	}
+
 	ctx.effect(() => ctx.webServer.register({
 		kind: "exact",
 		path: DISTROS_PATH,
@@ -243,6 +270,23 @@ export function apply(ctx) {
 						sendJson(res, 400, { code: "bad-action", message: `unknown action: ${action}` });
 						return;
 				}
+				// A well-formed request still asks first when the deployment is
+				// restricted: the 403 arrives before any wsl.exe call, and the panel
+				// repeats the same request with `acknowledge` once the user agrees.
+				try {
+					guardAdminAction(ctx, action, body);
+				} catch (error) {
+					if (!(error instanceof AdminActionDenied)) throw error;
+					console.error(`[wsl-sidebar] admin ${action} needs acknowledgement (deployment mode ${error.mode ?? "unknown"})`);
+					sendJson(res, 403, {
+						ok: false,
+						action,
+						code: "needs-acknowledge",
+						mode: error.mode ?? null,
+						message: String(error.message)
+					});
+					return;
+				}
 				// An export copies a whole distribution to disk: give it its own budget.
 				const result = await runWslExe(args, action === "export" ? { timeoutMs: 30 * 60 * 1000 } : undefined);
 				const ok = result.exitCode === 0;
@@ -326,12 +370,13 @@ export function apply(ctx) {
 					return;
 				}
 				const written = await writeConfig({ scope, distro: distro ?? undefined, text: next, verbatim: body?.mode !== "fields" });
-				console.error(`[wsl-sidebar] config write ${scope}${distro === null ? "" : " " + distro}: ${written.path} (${written.bytes} bytes)`);
+				console.error(`[wsl-sidebar] config write ${scope}${distro === null ? "" : " " + distro}: ${written.path} (${written.bytes} bytes, backup ${written.backup ?? "none"})`);
 				sendJson(res, 200, {
 					ok: true,
 					scope,
 					distro,
 					path: written.path,
+					backup: written.backup ?? null,
 					bytes: written.bytes,
 					text: next,
 					fields: configFields(scope, next),
@@ -377,4 +422,11 @@ export function apply(ctx) {
 			for (const dispose of disposers.reverse()) dispose?.();
 		};
 	}, "wsl-sidebar: wslx tools");
+
+	// Background tasks outlive a request; without this they would keep running (up
+	// to their 12 h ceiling) after the plugin is reloaded or removed.
+	ctx.effect(() => () => {
+		const stopped = killAllTasks();
+		if (stopped > 0) console.error(`[wsl-sidebar] stopped ${stopped} background task(s) on dispose`);
+	}, "wsl-sidebar: stop background tasks on dispose");
 }

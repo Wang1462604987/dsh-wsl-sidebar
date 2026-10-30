@@ -8,6 +8,9 @@
  * call path. No DSH process, no real web server, and it never lets a destructive
  * command reach a shell.
  */
+import { readdirSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { apply } from "../index.js";
 
 const tools = new Map();
@@ -56,10 +59,10 @@ const messageOf = async (run) => {
 };
 
 check("apply mounts six tools", tools.size === 6, [...tools.keys()].join(","));
-check("routes registered", routes.size === 7, [...routes.keys()].join(","));
+check("routes registered", routes.size === 8, [...routes.keys()].join(","));
 check(
 	"console routes are exact paths",
-	["/__wsl_plugin__/admin/distros", "/__wsl_plugin__/admin/action", "/__wsl_plugin__/admin/config", "/__wsl_plugin__/admin/status"].every(
+	["/__wsl_plugin__/platform", "/__wsl_plugin__/admin/distros", "/__wsl_plugin__/admin/action", "/__wsl_plugin__/admin/config", "/__wsl_plugin__/admin/status"].every(
 		(path) => routes.get(path)?.kind === "exact",
 	),
 );
@@ -157,6 +160,7 @@ check("admin/config reads /etc/wsl.conf", configDistro.status === 200 && typeof 
 const badScope = await callRoute(ADMIN_CONFIG, fakeRequest({ url: `${ADMIN_CONFIG}?scope=bogus` }));
 check("admin/config rejects an unknown scope", badScope.status === 400, `status ${badScope.status}`);
 
+const backupsBefore = new Set(readdirSync(homedir()).filter((name) => name.startsWith(".wslconfig.bak-")));
 const saveResponse = await callRoute(
 	ADMIN_CONFIG,
 	fakeRequest({ method: "POST", url: ADMIN_CONFIG, body: { scope: "global", mode: "raw", text: configGlobal.json.text } }),
@@ -165,11 +169,47 @@ check("admin/config saves .wslconfig unchanged", saveResponse.status === 200 && 
 const configAgain = await callRoute(ADMIN_CONFIG, fakeRequest({ url: `${ADMIN_CONFIG}?scope=global` }));
 check("admin/config write is lossless", configAgain.json?.text === configGlobal.json.text, "compared with the file before the save");
 
+// The save keeps the previous contents; this script must not leave that copy behind.
+const backup = saveResponse.json?.backup;
+check(
+	"admin/config kept a backup of the previous contents",
+	typeof backup === "string" && readdirSync(homedir()).includes(backup.slice(backup.indexOf(".wslconfig.bak-"))),
+	String(backup),
+);
+for (const name of readdirSync(homedir())) {
+	if (name.startsWith(".wslconfig.bak-") && !backupsBefore.has(name)) rmSync(join(homedir(), name), { force: true });
+}
+
 const badAction = await callRoute(ADMIN_ACTION, fakeRequest({ method: "POST", url: ADMIN_ACTION, body: { action: "explode" } }));
 check("admin/action rejects an unknown action", badAction.status === 400 && badAction.json?.code === "bad-action", `status ${badAction.status}`);
 
 const traversal = await callRoute(ADMIN_ACTION, fakeRequest({ method: "POST", url: ADMIN_ACTION, body: { action: "export", distro: "Ubuntu-24.04", path: "../../evil" } }));
 check("admin/action rejects a relative export path", traversal.status === 400, `status ${traversal.status}`);
+
+// ---- the irreversible actions ask first on a restricted deployment ----------
+policies.mode = "workspace-write";
+const askedFirst = await callRoute(ADMIN_ACTION, fakeRequest({ method: "POST", url: ADMIN_ACTION, body: { action: "terminate", distro: "Ubuntu-24.04" } }));
+check("admin/action asks before terminate", askedFirst.status === 403 && askedFirst.json?.code === "needs-acknowledge", `status ${askedFirst.status}`);
+
+const acknowledged = await callRoute(
+	ADMIN_ACTION,
+	fakeRequest({ method: "POST", url: ADMIN_ACTION, body: { action: "export", distro: "Ubuntu-24.04", path: "../../evil", acknowledge: "export" } }),
+);
+check("admin/action lets an acknowledged call reach validation", acknowledged.status === 400, `status ${acknowledged.status}`);
+
+policies.mode = "danger-full-access";
+const unrestricted = await callRoute(
+	ADMIN_ACTION,
+	fakeRequest({ method: "POST", url: ADMIN_ACTION, body: { action: "export", distro: "Ubuntu-24.04", path: "Z:\\__wsl_sidebar_probe__\\probe.tar" } }),
+);
+check("admin/action skips the prompt under danger-full-access", unrestricted.status !== 403, `status ${unrestricted.status}`);
+
+const platformResponse = await callRoute("/__wsl_plugin__/platform", fakeRequest({ url: "/__wsl_plugin__/platform" }));
+check(
+	"platform route reports Windows",
+	platformResponse.status === 200 && platformResponse.json?.supported === true && platformResponse.json?.platform === "win32",
+	String(platformResponse.json?.platform),
+);
 
 const statusResponse = await callRoute(ADMIN_STATUS, fakeRequest({ url: ADMIN_STATUS }));
 check("admin/status samples running distros", statusResponse.status === 200 && Array.isArray(statusResponse.json?.distros), `status ${statusResponse.status}`);

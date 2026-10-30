@@ -25,7 +25,9 @@ const ctx = {
 		},
 	},
 	tools: { register: () => () => {} },
-	get: () => undefined,
+	// The panel's routes run outside any agent session, so the Host resolves the
+	// deployment default here; "unrestricted" keeps the happy paths prompt-free.
+	get: (name) => (name === "sandboxPolicy" ? { resolve: () => ({ mode: "danger-full-access" }) } : undefined),
 	on() {},
 };
 
