@@ -171,7 +171,7 @@ dsh plugin add dsh-wsl-sidebar
 
 ## 状态
 
-版本 1.7.1。在 Windows 11 + WSL 2（3.0.3.0）上测过。
+版本 1.7.2。在 Windows 11 + WSL 2（3.0.3.0）上测过。
 
 ## 许可证
 

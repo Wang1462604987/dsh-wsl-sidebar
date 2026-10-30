@@ -171,7 +171,7 @@ Restart after changing either half; the client bundle is packaged at boot.
 
 ## Status
 
-Version 1.7.1. Tested on Windows 11 with WSL 2 (3.0.3.0).
+Version 1.7.2. Tested on Windows 11 with WSL 2 (3.0.3.0).
 
 ## License
 

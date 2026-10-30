@@ -1,6 +1,6 @@
 {
   "name": "dsh-wsl-sidebar",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "WSL settings page and wslx-* tools for DeepSeek Harness: pick a distribution, browse Linux directories, open them as workspaces, and run native Linux commands inside.",
   "license": "MIT",
   "author": "王嘉龙 <1462604987@qq.com>",
