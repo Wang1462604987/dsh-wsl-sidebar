@@ -171,7 +171,7 @@ dsh plugin add dsh-wsl-sidebar
 
 ## 状态
 
-版本 1.7.1。在 Windows 11 + Ubuntu 24.04（WSL 2，3.0.3.0）上测过，包括 Arch Linux 上的「停着的发行版」行为。
+版本 1.7.1。在 Windows 11 + WSL 2（3.0.3.0）上测过。
 
 ## 许可证
 

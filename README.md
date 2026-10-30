@@ -171,7 +171,7 @@ Restart after changing either half; the client bundle is packaged at boot.
 
 ## Status
 
-Version 1.7.1. Tested on Windows 11 with Ubuntu 24.04 on WSL 2 (3.0.3.0), including the stopped-distribution behaviour on Arch Linux.
+Version 1.7.1. Tested on Windows 11 with WSL 2 (3.0.3.0).
 
 ## License
 
