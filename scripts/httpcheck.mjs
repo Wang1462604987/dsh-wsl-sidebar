@@ -97,6 +97,20 @@ const folder = await get("/__wsl_plugin__/list/Ubuntu-24.04/home");
 const folderJson = await folder.json();
 check("GET list/<distro>/<path>", folder.status === 200 && Array.isArray(folderJson.entries), `${folderJson.entries?.length} entr(ies)`);
 
+// A stopped distribution is not listed behind the user's back: browsing boots
+// nothing, it answers 409 and the page offers the start button.
+const idle = distrosJson.distros.find((row) => row.state !== "running");
+if (idle === undefined) {
+	console.log("SKIP  list of a stopped distro  (every distribution is running)");
+} else {
+	const refused = await get("/__wsl_plugin__/list/" + encodeURIComponent(idle.name) + "/home");
+	const refusedJson = await refused.json();
+	check("list of a stopped distro is 409", refused.status === 409 && refusedJson.code === "distro-stopped", `status ${refused.status} ${refusedJson.code ?? ""}`);
+	const again = await get("/__wsl_plugin__/admin/distros");
+	const againJson = await again.json();
+	check("that distro is still stopped", againJson.distros.find((row) => row.name === idle.name)?.state !== "running", againJson.distros.find((row) => row.name === idle.name)?.state);
+}
+
 const missing = await get("/__wsl_plugin__/nope");
 check("unknown path is 404", missing.status === 404, `status ${missing.status}`);
 

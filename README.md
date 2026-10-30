@@ -37,6 +37,12 @@ acknowledgement. That is not a sandbox (it cannot be: the model and this page
 share one browser peer); it is there so a stray click cannot stop the
 distribution your session is running in.
 
+Nothing on this page starts a distribution. A file read would have to run a
+command inside it, and that boots a stopped one, so a stopped distribution shows
+an explanation and a **Start** button instead of a form, and the same rule
+applies to the folder picker: browsing a stopped distribution answers
+`distro-stopped` and offers to start it, rather than starting it on its own.
+
 Every write keeps the file it replaces: `.wslconfig` next to itself as
 `.wslconfig.bak-<date>`, `/etc/wsl.conf` as `/etc/wsl.conf.bak-<date>`, and the
 panel prints where the backup went.
@@ -213,6 +219,9 @@ own row — its id is `tool-wsl`, not the package name:
 - **Writing `/etc/wsl.conf` fails.** The write runs as `wsl.exe -u root`; a
   distribution with root login disabled (or a read-only `/etc`) rejects it.
   Fix `/etc/wsl.conf` once by hand, then reload the page.
+- **The folder picker refuses a distribution.** That distribution is stopped;
+  the dialog explains it and the Start button starts it. Nothing starts a
+  distribution implicitly.
 - **Stop / version buttons do nothing.** Your deployment's default permission is
   not `danger-full-access`, so the first click opens a confirmation dialog and
   sends nothing until you confirm it.

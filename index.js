@@ -14,6 +14,7 @@ import { killAllTasks } from "./lib/tasks.js";
 import {
 	applyIniEdits,
 	configFields,
+	distroState,
 	distroStats,
 	exists,
 	listVerbose,
@@ -174,6 +175,14 @@ export function apply(ctx) {
 			const segments = splitRelPath(rel);
 			if (segments === null) {
 				sendJson(res, 400, { code: "bad-path", message: "path must not contain traversal or separators" });
+				return;
+			}
+			// The 9p share only exists while the distribution runs, so listing a
+			// stopped one would boot it. Say so instead of starting it behind the
+			// user's back.
+			const state = await distroState(distro);
+			if (state !== "running") {
+				sendJson(res, 409, { code: "distro-stopped", distro, state, message: `this distribution is not running (${state})` });
 				return;
 			}
 			const unc = `\\\\wsl.localhost\\${distro}` + (segments.length > 0 ? `\\${segments.join("\\")}` : "");
@@ -339,6 +348,7 @@ export function apply(ctx) {
 						path: config.path,
 						exists: config.exists,
 						text: config.text,
+						state: config.state ?? null,
 						fields: configFields(scope, config.text)
 					});
 					return;
@@ -383,7 +393,12 @@ export function apply(ctx) {
 					needsRestart: true
 				});
 			} catch (error) {
-				sendJson(res, 500, { ok: false, message: String(error?.message ?? error) });
+				const message = String(error?.message ?? error);
+				if (error?.code === "distro-stopped") {
+					sendJson(res, 409, { ok: false, code: "distro-stopped", message });
+					return;
+				}
+				sendJson(res, 500, { ok: false, message });
 			}
 		}
 	}), `wsl-sidebar: GET/POST ${ADMIN_CONFIG_PATH}`);

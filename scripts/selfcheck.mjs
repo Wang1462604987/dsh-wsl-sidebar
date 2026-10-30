@@ -10,6 +10,7 @@
 import { buildWslArgs, distroFromWindowsPath, linuxPathFromWindows, resolveDistro, runInWsl } from "../lib/wsl.js";
 import { createTools, destructiveReason } from "../lib/tools.js";
 import { readTask, startTask } from "../lib/tasks.js";
+import { distroState, listVerbose, readConfig, writeConfig } from "../lib/admin.js";
 
 const distro = process.argv[2] ?? "Ubuntu-24.04";
 let failures = 0;
@@ -121,6 +122,27 @@ const second = readTask(task.id, { cursor: first.cursor });
 check("background task output", first.text.includes("first") && first.text.includes("second"), JSON.stringify(first.text));
 check("cursor is incremental", second.text === "", JSON.stringify(second.text));
 check("unicode argv passes through", (await runInWsl({ distro, script: "printf '中文\\n'" })).stdout.includes("中文"));
+
+
+// Opening the config page must not boot a distribution: reading and writing
+// /etc/wsl.conf both need a running one, so a stopped one is refused untouched.
+const rows = await listVerbose();
+const idle = rows.find((row) => row.state !== "running");
+if (idle !== undefined) {
+	const config = await readConfig({ scope: "distro", distro: idle.name });
+	check("stopped distro config reads as stopped", config.state !== "running" && config.text === "", config.state);
+	let refusal = "";
+	try {
+		await writeConfig({ scope: "distro", distro: idle.name, text: "[boot]" });
+	} catch (error) {
+		refusal = error.code ?? error.message;
+	}
+	check("stopped distro config refuses the write", refusal === "distro-stopped", refusal);
+	const after = await distroState(idle.name);
+	check("stopped distro is still stopped", after !== "running", after);
+} else {
+	console.log("SKIP  stopped-distro config guard  (every distribution is running)");
+}
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

@@ -60,6 +60,10 @@ const calls = [];
 const bodies = [];
 /** When set, every irreversible action is refused until it carries `acknowledge`. */
 let requireAcknowledgement = false;
+/** When set, the per-distro config reads back as a stopped distribution. */
+let stoppedConfig = false;
+/** When set, the folder picker's distribution refuses to be listed. */
+let heroStopped = false;
 g.fetch = async (url, init) => {
 	const path = String(url).split("?")[0];
 	const method = init?.method ?? "GET";
@@ -76,7 +80,14 @@ g.fetch = async (url, init) => {
 		};
 		return { ok: false, status: 403, async text() { return JSON.stringify(refusal); } };
 	}
+	if (heroStopped && path.startsWith("/__wsl_plugin__/list/")) {
+		const refusal = { code: "distro-stopped", distro: "Ubuntu-24.04", state: "stopped", message: "this distribution is not running (stopped)" };
+		return { ok: false, status: 409, async text() { return JSON.stringify(refusal); }, async json() { return refusal; } };
+	}
 	let payload = DATA[path];
+	if (path === "/__wsl_plugin__/admin/config" && stoppedConfig && method === "GET") {
+		payload = { ...DATA[path], scope: "distro", distro: "Arch", path: "/etc/wsl.conf", exists: false, text: "", state: "stopped" };
+	}
 	if (payload === undefined) payload = { entries: [], error: "ENOENT" };
 	if (path === "/__wsl_plugin__/admin/action") payload = { ok: true, action: body?.action, command: "wsl.exe --" + (body?.action ?? "?"), stdout: "", stderr: "" };
 	if (path === "/__wsl_plugin__/admin/config" && method === "POST") payload = { ...DATA[path], text: body?.text ?? DATA[path].text, backup: "C:\\Users\\14626\\.wslconfig.bak-20261030-090000" };
@@ -197,13 +208,15 @@ function render(node, depth = 0) {
 	return [{ type: node.type, props: node.props, children: kids }];
 }
 
-async function settle(rounds = 8) {
+async function settleSlot(slotName, props = {}, rounds = 8) {
 	for (let round = 0; round < rounds; round += 1) {
 		needsRender = false;
 		let cursorLocal = 0;
 		void cursorLocal;
 		cursor = 0;
-		const tree = render({ type: slots.find((slot) => slot.meta.name === "settings.section").render, props: {}, children: [] });
+		const found = slots.find((slot) => slot.meta.name === slotName);
+		if (found === undefined) throw new Error("slot not registered: " + slotName);
+		const tree = render({ type: found.render, props, children: [] });
 		// Run effects queued by this render.
 		for (const entry of effects.splice(0)) {
 			if (process.env.TRACE) {
@@ -216,6 +229,11 @@ async function settle(rounds = 8) {
 		if (!needsRender) return tree;
 	}
 	throw new Error("render did not settle");
+}
+
+/** Render the settings section, which is where the console lives. */
+async function settle(rounds = 8) {
+	return settleSlot("settings.section", {}, rounds);
 }
 
 mount();
@@ -357,6 +375,35 @@ clickByText(tree, "确认执行");
 tree = await settle();
 expect(actionPosts().at(-1).body.acknowledge === "terminate", "the confirmed retry carried the acknowledgement");
 requireAcknowledgement = false;
+
+// A stopped distribution is never booted just to show its file: the page says so
+// and offers the start button instead.
+clickByText(tree, "配置");
+tree = await settle();
+stoppedConfig = true;
+clickByText(tree, "发行版 /etc/wsl.conf");
+tree = await settle();
+expect(JSON.stringify(tree).includes("发行版未运行"), "a stopped distro explains why the file is unavailable");
+expect(!JSON.stringify(tree).includes("</dev/null"), "no editor is offered for an unreachable file");
+const beforeStart = actionPosts().length;
+clickByText(tree, "启动");
+tree = await settle();
+expect(actionPosts().at(-1)?.body.action === "start" && actionPosts().at(-1).body.distro === "Arch", "the start button posts the start action");
+expect(actionPosts().length === beforeStart + 1, "the start button posts once");
+stoppedConfig = false;
+
+// The folder picker does not boot a distribution to look inside it either.
+let heroTree = await settleSlot("conversation.hero.options", { ctx });
+heroStopped = true;
+clickByText(heroTree, "WSL 目录");
+heroTree = await settleSlot("conversation.hero.options", { ctx });
+expect(JSON.stringify(heroTree).includes("选择 WSL 目录"), "the hero chip opens the folder dialog");
+expect(JSON.stringify(heroTree).includes("发行版未运行"), "the picker says a stopped distribution was not started");
+const beforeHeroStart = actionPosts().length;
+clickByText(heroTree, "启动");
+heroTree = await settleSlot("conversation.hero.options", { ctx });
+expect(actionPosts().length === beforeHeroStart + 1 && actionPosts().at(-1).body.action === "start", "the picker starts the distribution only when asked");
+heroStopped = false;
 
 // A non-Windows deployment explains itself instead of spawning a missing wsl.exe.
 DATA["/__wsl_plugin__/platform"] = { platform: "linux", supported: false };

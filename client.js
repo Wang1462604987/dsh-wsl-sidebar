@@ -51,6 +51,11 @@ window.__ModuleLoader__.load({
 				needsRestart: { en: "Takes effect after WSL restarts.", zh: "需要重启 WSL 才生效。" },
 				restartNow: { en: "Restart WSL now", zh: "立即重启 WSL" },
 				later: { en: "Later", zh: "稍后" },
+				stoppedTitle: { en: "Distribution not running", zh: "发行版未运行" },
+				stoppedHint: {
+					en: "Reading /etc/wsl.conf means running a command inside the distribution, which would start it. Nothing was touched — start it here if you want to edit the file.",
+					zh: "读取 /etc/wsl.conf 要在发行版里跑命令，等于把它启动起来，所以这里什么都没动。想编辑就先启动它。"
+				},
 				confirmShutdownTitle: { en: "Restart WSL?", zh: "确认重启 WSL?" },
 				confirmTitle: { en: "This cannot be undone", zh: "此操作不可撤销" },
 				confirmRun: { en: "Run it", zh: "确认执行" },
@@ -517,6 +522,7 @@ window.__ModuleLoader__.load({
 			const [status, setStatus] = React.useState(null);
 			const [busy, setBusy] = React.useState(false);
 			const [askRestart, setAskRestart] = React.useState(false);
+			const stopped = config !== null && typeof config.state === "string" && config.state !== "running";
 
 			React.useEffect(() => {
 				let alive = true;
@@ -558,6 +564,19 @@ window.__ModuleLoader__.load({
 			React.useEffect(() => {
 				load();
 			}, [load]);
+
+			const startDistro = async () => {
+				setBusy(true);
+				setStatus(null);
+				try {
+					await postJson(ADMIN.action, { action: "start", distro });
+					await load();
+				} catch (error) {
+					setStatus({ ok: false, text: String(error?.message ?? error) });
+				} finally {
+					setBusy(false);
+				}
+			};
 
 			const save = async () => {
 				setBusy(true);
@@ -645,7 +664,13 @@ window.__ModuleLoader__.load({
 						onClick: () => setDistro(name)
 					}, (name === distro ? "● " : "") + name)))
 					: null,
-				config === null
+				stopped
+					? h("div", { style: STYLE.card },
+						h("div", { style: STYLE.cardTitle }, t("stoppedTitle")),
+						h("div", { style: STYLE.hint }, t("stoppedHint")),
+						h("div", { style: STYLE.rowButtons },
+							h(Btn, { style: STYLE.primary, hoverStyle: STYLE.primaryHover, disabled: busy, onClick: startDistro }, t("start"))))
+					: config === null
 					? h("div", { style: STYLE.hint }, status === null ? t("loading") : "")
 					: h("div", { style: STYLE.card },
 						h("div", { style: STYLE.cardRow },
@@ -654,7 +679,7 @@ window.__ModuleLoader__.load({
 						h("div", { style: STYLE.rowButtons },
 							h(Btn, { style: STYLE.mini, hoverStyle: STYLE.miniHover, onClick: () => setView("form") }, (view === "form" ? "● " : "") + t("viewForm")),
 							h(Btn, { style: STYLE.mini, hoverStyle: STYLE.miniHover, onClick: () => setView("raw") }, (view === "raw" ? "● " : "") + t("viewRaw")))),
-				config === null
+				config === null || stopped
 					? null
 					: h("div", { style: STYLE.scroll },
 						view === "raw"
@@ -823,6 +848,8 @@ window.__ModuleLoader__.load({
 			const [entries, setEntries] = React.useState(null);
 			const [error, setError] = React.useState(null);
 			const [busy, setBusy] = React.useState(false);
+			const [stopped, setStopped] = React.useState(null);
+			const [reload, setReload] = React.useState(0);
 
 			React.useEffect(() => {
 				let alive = true;
@@ -843,11 +870,17 @@ window.__ModuleLoader__.load({
 				let alive = true;
 				setEntries(null);
 				setError(null);
+				setStopped(null);
 				const rest = segments.map(encodeURIComponent).join("/");
 				const url = LIST_PREFIX + "/" + encodeURIComponent(distro) + (rest ? "/" + rest : "");
 				fetch(url)
-					.then((r) => {
-						if (!r.ok) throw new Error("HTTP " + r.status);
+					.then(async (r) => {
+						if (!r.ok) {
+							const body = await r.json().catch(() => ({}));
+							const failure = new Error(body?.message ?? "HTTP " + r.status);
+							failure.code = body?.code ?? null;
+							throw failure;
+						}
 						return r.json();
 					})
 					.then((data) => {
@@ -855,13 +888,32 @@ window.__ModuleLoader__.load({
 						setEntries(Array.isArray(data?.entries) ? data.entries : []);
 					})
 					.catch((e) => {
-						report("list-failed", { where: "dialog", distro, segments, message: String(e?.message ?? e) });
 						if (!alive) return;
 						setEntries([]);
+						if (e?.code === "distro-stopped") {
+							setStopped(distro);
+							return;
+						}
+						report("list-failed", { where: "dialog", distro, segments, message: String(e?.message ?? e) });
 						setError(String(e?.message ?? e));
 					});
 				return () => { alive = false; };
-			}, [distro, segments]);
+			}, [distro, segments, reload]);
+
+			const startStopped = async () => {
+				if (busy) return;
+				setBusy(true);
+				setError(null);
+				try {
+					await postJson(ADMIN.action, { action: "start", distro });
+					setReload((value) => value + 1);
+				} catch (e) {
+					report("start-failed", { distro, message: String(e?.message ?? e) });
+					setError(String(e?.message ?? e));
+				} finally {
+					setBusy(false);
+				}
+			};
 
 			const confirm = async () => {
 				if (!distro || busy) return;
@@ -917,6 +969,13 @@ window.__ModuleLoader__.load({
 								onClick: () => setSegments([...segments, entry.name])
 							}, "📁 " + entry.name)))
 					: null,
+				stopped === null
+					? null
+					: h("div", { style: STYLE.card },
+						h("div", { style: STYLE.cardTitle }, t("stoppedTitle")),
+						h("div", { style: STYLE.hint }, t("stoppedHint")),
+						h("div", { style: STYLE.rowButtons },
+							h(Btn, { style: STYLE.primary, hoverStyle: STYLE.primaryHover, disabled: busy, onClick: startStopped }, t("start")))),
 				error ? h("div", { style: { ...STYLE.hint, color: "var(--dsw-alias-color-status-danger, #c33)", userSelect: "text", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: "120px", overflowY: "auto" } }, String(error)) : null,
 				h("div", { style: STYLE.footer },
 					h(Btn, { style: STYLE.button, hoverStyle: STYLE.buttonHover, onClick: onClose }, t("cancel")),
