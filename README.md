@@ -1,142 +1,186 @@
-# WSL Sidebar for DeepSeek Harness
+# dsh-wsl-sidebar
 
-给 DeepSeek Harness 的 WSL 插件：**设置里一页 WSL 控制台**，加上一组在发行版内执行原生 Linux 命令的 `wslx-*` 工具。装这一个插件就够——浏览 WSL、在 WSL 目录里开工作区、跑长驻进程和交互式 shell，不用再装 `dsh-wsl-tool`，不经过 `ops_bash`，也不用提前准备 Windows ACL。
+<p align="center"><a href="./README.md">English</a> | <a href="./README.zh-CN.md">中文</a></p>
 
-## 设置页：设置 → WSL
+<p align="center"><strong>WSL plugin for DeepSeek Harness</strong> — <em>your agent, running inside the distribution.</em></p>
 
-三个标签页：
+<p align="center"><sub>a WSL console in Settings · six <code>wslx-*</code> tools · native Linux commands · background tasks and interactive shells</sub></p>
 
-| 标签 | 内容 |
+<p align="center">
+<a href="https://www.npmjs.com/package/dsh-wsl-sidebar"><img src="https://img.shields.io/npm/v/dsh-wsl-sidebar.svg?style=flat-square" alt="npm"></a>
+<a href="https://github.com/Wang1462604987/dsh-wsl-sidebar/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/dsh-wsl-sidebar.svg?style=flat-square" alt="license"></a>
+<a href="https://github.com/Wang1462604987/dsh-wsl-sidebar"><img src="https://img.shields.io/badge/GitHub-Wang1462604987%2Fdsh--wsl--sidebar-181717?style=flat-square&logo=github" alt="GitHub"></a>
+</p>
+
+<p align="center">
+<code>dsh plugin add dsh-wsl-sidebar</code>
+</p>
+
+<p align="center">
+<a href="https://ubuntu.com" title="Ubuntu"><img src="https://cdn.simpleicons.org/ubuntu/E95420" height="26" alt="Ubuntu"></a>&nbsp;
+<a href="https://www.debian.org" title="Debian"><img src="https://cdn.simpleicons.org/debian/A81D33" height="26" alt="Debian"></a>&nbsp;
+<a href="https://archlinux.org" title="Arch Linux"><img src="https://cdn.simpleicons.org/archlinux/1793D1" height="26" alt="Arch Linux"></a>&nbsp;
+<a href="https://alpinelinux.org" title="Alpine Linux"><img src="https://cdn.simpleicons.org/alpinelinux/0D597F" height="26" alt="Alpine"></a>&nbsp;
+<a href="https://get.opensuse.org" title="openSUSE"><img src="https://cdn.simpleicons.org/opensuse/73BA25" height="26" alt="openSUSE"></a>&nbsp;
+<a href="https://fedoraproject.org" title="Fedora"><img src="https://cdn.simpleicons.org/fedora/51A2DA" height="26" alt="Fedora"></a>&nbsp;
+<a href="https://kali.org" title="Kali"><img src="https://cdn.simpleicons.org/kalilinux/557C94" height="26" alt="Kali"></a>&nbsp;
+<a href="https://www.kernel.org" title="Linux"><img src="https://cdn.simpleicons.org/linux/FCC624" height="26" alt="Linux"></a>&nbsp;
+<a href="https://www.deepseek.com" title="deepseek-harness (dsh)"><img src="https://cdn.simpleicons.org/deepseek/5786FE" height="26" alt="deepseek-harness"></a>
+</p>
+
+---
+
+> **Design rule:** the agent never writes through `\\wsl.localhost`. Every read, write, edit and search becomes one `wsl.exe -d <distro> -e bash -lc <script>`, so the work happens on the Linux side of the boundary, as ordinary Linux commands.
+
+## Why
+
+`\\wsl.localhost` is a 9p share, not a Windows filesystem:
+
+- Windows-side writers use "temp file + rename", which that share cannot do — writing from a UNC path fails, and fails deterministically under a read-only sandbox;
+- a workspace gets its ACL rewritten before anything is tagged, but a 9p share returns no security descriptor — `Get-Acl` throws, so a Windows-side shell cannot start in a `\\wsl.localhost\` workspace at all.
+
+A single Windows-side process also speaks for one distribution at a time: point it at a file in another distro and the path resolves to the first one.
+
+This plugin sidesteps both: it talks to `wsl.exe` directly and executes inside whichever distribution the request names, so a WSL workspace, a second distro and a stopped distro are each exactly what they are.
+
+## How it works
+
+Two halves that meet over the harness web server:
+
+- **Host half** (`index.js`, `lib/*.js`) registers seven routes under `/__wsl_plugin__/` — distro listing, directory listing, administration, configuration, runtime status, logs — plus the six `wslx-*` tools. Requests from anything but the owner web session are rejected.
+- **Client half** (`client.js`) renders the Settings page and the new-session entry, and calls those routes with the session the page already has.
+
+Distribution resolution, in order:
+
+1. the explicit `distro` argument (validated against `wsl -l -q`; a wrong name lists what is installed);
+2. the distro of the workspace the session runs in (read from `\\wsl.localhost\<distro>\...`);
+3. the `DSH_WSL_DISTRO` environment variable (useful with Windows-path workspaces);
+4. otherwise `wsl.exe`'s own default — and every tool prints the distribution it actually ran in, so a fallback is visible instead of silent.
+
+Working directories map back the other way: `/home/...` stays as written, `C:\Users\...` becomes `/mnt/c/Users/...`, and a UNC path maps to its Linux form.
+
+## Settings page
+
+Three tabs under **Settings → WSL**:
+
+| Tab | What it does |
 | --- | --- |
-| 发行版 / Distros | 每个发行版的运行状态、WSL 版本、默认标记；启动、停止、设为默认、在 WSL 1 与 2 之间切换 |
-| 配置 / Config | `.wslconfig`（全局）与 `/etc/wsl.conf`（单个发行版）的表单：内存上限、处理器数、swap、网络模式、localhost 转发、systemd、默认用户，另有原文视图 |
-| 运行态 / Runtime | 单个发行版的内存与磁盘占用、负载、运行时长、监听端口、进程数 |
+| Distros | Each distribution's state and WSL version, plus start, stop, set default and switching between WSL 1 and 2. |
+| Config | `.wslconfig` (global) and `/etc/wsl.conf` (per distro): memory cap, processor count, swap, networking mode, localhost forwarding, systemd, default user — as a form, with a raw-text view alongside. |
+| Runtime | Memory and disk usage, load, uptime, listening ports and process count for one distribution, from plain Linux tools (`free -b`, `df -B1`, `ss`, `/proc`). |
 
-几个刻意的设计：
+Deliberate choices:
 
-- 写盘只发生在你点「保存」的时候。两个文件按各自宿主的方式写：`.wslconfig` 走临时文件加原子 rename，`/etc/wsl.conf` 走 `wsl.exe -u root`，原有注释和它不认识的键都会保留。
-- 保存**不会**重启 WSL。页面会这么提示，并给一个「立即重启」按钮；`wsl --shutdown` 要二次确认才执行，因为它会把所有发行版都停掉。
-- 每次写入都留备份：`.wslconfig.bak-<日期>` 和 `/etc/wsl.conf.bak-<日期>`，页面会显示备份落在哪里。
-- 破坏性按钮有自己的闸门：部署默认权限不是 `danger-full-access` 时，停止发行版、切 WSL 版本、导出磁盘、`wsl --shutdown` 都要先确认，Host 没收到 `acknowledge` 一律拒绝。这不是沙箱（也做不到——模型和这个页面共用同一个已认证的浏览器端），它防的是误触。
-- **不会擅自启动发行版**：读 `/etc/wsl.conf` 等于在发行版里跑命令，会把停着的发行版叫醒，所以停着的发行版只显示说明和一个「启动」按钮；目录浏览同理，返回 `distro-stopped`，点了才启动。
-- 下拉框和按钮都是页面自绘的：原生 `<select>` 的弹层跟随系统配色，深色主题下高亮那一行看不见字。
+- **Disk writes happen on save, not on typing.** Each file is written its own way: `.wslconfig` through a temp file and an atomic rename, `/etc/wsl.conf` through `wsl.exe -u root`. Comments and unknown keys survive.
+- **Saving does not restart WSL.** The page says so and offers a restart button; `wsl --shutdown` asks for confirmation first, because it stops every distribution.
+- **Every write keeps a backup:** `.wslconfig.bak-<date>` and `/etc/wsl.conf.bak-<date>`, and the page shows where it landed.
+- **Destructive buttons have their own gate.** When the deployment's default permission is not `danger-full-access`, stopping a distro, switching its version, exporting a disk and `wsl --shutdown` all require a confirmation, and the host rejects any request without the matching `acknowledge`. This is not a sandbox — the model and the page share one authenticated browser session — it guards against a misclick.
+- **A stopped distribution is never started implicitly.** Reading `/etc/wsl.conf` means running a command inside the distro, which would wake it; a stopped distro therefore shows an explanation and a start button only. Directory browsing behaves the same way and answers `distro-stopped`.
+- **Dropdowns are drawn by the page.** A native `<select>` popup follows the system palette, and on a dark theme the highlighted row is unreadable.
 
-## 新会话：🐧 WSL 目录
+## New-session entry
 
-新建会话时，其他入口旁边有一个「🐧 WSL 目录」按钮。点开是发行版加目录的选择弹窗，「选择此目录」会创建 `\wsl.localhost\<发行版>\<路径>` 工作区，并把草稿会话切过去——和内置的「添加工作区」对 Windows 目录做的事一样。
+Next to the other entry points on the new-session page there is a **🐧 WSL 目录** button. It opens a distro-and-directory picker; "choose this directory" creates a `\\wsl.localhost\<distro>\<path>` workspace and switches the draft session to it, exactly what the built-in workspace picker does for Windows directories.
 
-## 工具
+## Tools
 
-| 工具 | 作用 |
+| Tool | What it does |
 | --- | --- |
-| `wslx-run` | 在发行版里跑 bash 命令（`rg`、`git`、`make`、`python3`……），可选 `workdir`、`timeoutMs`，带危险命令拦截 |
-| `wslx-read` | 读文件并带行号，每次 2000 行 |
-| `wslx-write` | 通过 Linux 侧 stdin 管道整篇写文件 |
-| `wslx-edit` | 替换一段精确文本，文件的 mode 与属主保持不变 |
-| `wslx-search` | 用 `rg` 做正则搜索，没有就退到 `grep -E`，最多 250 条 |
-| `wslx-bg` | 跨调用保活一个进程：`start`（命令，或 `mode=shell` 开交互式 `bash -i`）、`output`（按 cursor 增量）、`input`（往 stdin 写一行）、`kill`、`list` |
+| `wslx-run` | Run a bash command inside a distribution (`rg`, `git`, `make`, `python3`…); optional `workdir` and `timeoutMs`; dangerous commands are intercepted. |
+| `wslx-read` | Read a file with line numbers, 2000 lines per call. |
+| `wslx-write` | Write a whole file through a Linux-side stdin pipe. |
+| `wslx-edit` | Replace one exact string; the file's mode and owner stay unchanged. |
+| `wslx-search` | Regex search with `rg`, falling back to `grep -E`; at most 250 matches. |
+| `wslx-bg` | Keep a process alive across calls: `start` (a command, or `mode=shell` for an interactive `bash -i`), `output` (incremental, by cursor), `input` (one line to stdin), `kill`, `list`. |
 
-每个工具都按同样的顺序确定用哪个发行版：
+Every tool accepts `asRoot: true`, which runs that one call as the distribution's Linux root through `wsl.exe -u root`. The Windows process itself needs no elevation — it uses the root the distro already has. The names carry a `wslx-` prefix, so they never collide with another bundle's tool names.
 
-1. 显式传入的 `distro`（会对着 `wsl -l -q` 校验，传错时把已安装的列出来）；
-2. 调用方会话工作区所在的发行版（从会话的 `\wsl.localhost\<发行版>\...` 路径读）；
-3. 环境变量 `DSH_WSL_DISTRO`（配合 Windows 路径工作区时有用）；
-4. 都没有就用 `wsl.exe` 自己的默认值——工具头部总会打印实际跑在哪个发行版里，所以意外落到默认值也会被看见，而不是悄悄发生。
+## Background tasks and interactive shells
 
-工作目录反过来映射：`/home/...` 原样保留，`C:\Users\...` 变成 `/mnt/c/Users/...`，UNC 路径映射到它对应的 Linux 路径。
+`wslx-bg` keeps one `wsl.exe` child process per task:
 
-所有文件和命令工具都接受 `asRoot: true`，让那一次调用以发行版的 Linux root 运行（走 `wsl.exe -u root`）。Windows 进程本身不需要提权，用的就是 WSL 发行版本来就有的 root。
+- `start` with `mode=command` runs a bash command, and its output stays readable after it finishes; `mode=shell` keeps an interactive `bash -i`, so `python3 -i`, `psql`, `ssh`, an MQTT client and a `sudo` password prompt all work a line at a time.
+- `output` returns only what was written after the cursor you pass, so polling a noisy task does not re-read the log.
+- `input` writes one line to stdin; `kill` sends Ctrl-C first and then kills the Windows process tree (the Linux children go with it); `list` shows every task.
+- Tasks live inside the plugin process: when the harness exits, they are gone, and no daemon is left behind. Output is capped at 1 MiB and the default time-to-live is 30 minutes.
 
-## 后台任务与交互式 shell
+There is no pseudo-terminal, so full-screen programs such as `vim`, `top` and `htop` cannot draw. Anything that reads and writes line by line works.
 
-`wslx-bg` 每个任务保活一个 `wsl.exe` 子进程：
+## Install
 
-- `start` 加 `mode=command` 跑一条 bash 命令，跑完输出仍然可读；`mode=shell` 保留一个交互式 `bash -i`，于是 `python3 -i`、`psql`、`ssh`、`mqtt` 客户端、`sudo` 密码提示都能一行一行地交互。
-- `output` 只返回上一次 `cursor` 之后写入的内容，轮询吵闹的任务不会把整份日志重读一遍。
-- `input` 往 stdin 写一行，`kill` 先发 Ctrl-C 再杀 Windows 进程树（Linux 子进程一起走），`list` 列出全部任务。
-- 任务活在插件进程里：Harness 退出就没了，不会留下守护进程；输出上限 1 MiB，默认 30 分钟 TTL。
-
-没有伪终端，所以 `vim`、`top`、`htop` 这类全屏 TUI 画不出来。这类需求请开发行版自己的终端；其余「按行读写」的程序都能用。
-
-## 为什么需要这些工具
-
-`\wsl.localhost` 是 9p 共享，不是 Windows 文件系统：
-
-- Windows 侧写文件用「临时文件 + rename」，这条共享做不到，所以从 UNC 路径写入会失败（只读沙箱下更是必失败）；
-- `dsh-ops` 给工作区打标签前要重写它的 ACL，而 9p 共享不返回安全描述符——`Get-Acl` 必然抛错，于是 `ops_bash` 在 `\wsl.localhost\` 工作区里根本起不来。
-
-这些工具不碰那条路径：每次操作都变成一次 `wsl.exe -d <发行版> -e bash -lc <脚本>`，读写发生在边界的 Linux 一侧，就是普通的 Linux 命令。
-
-## 安装
-
-从公开仓库装，一条命令，没有构建步骤也不需要 `allowBuilds` 确认，因为包里是原生 ESM：
+From the repository, one command, no build step and no `allowBuilds` confirmation, because the package is native ESM:
 
 ```sh
 dsh plugin add github:Wang1462604987/dsh-wsl-sidebar
 ```
 
-或者从 npm：
+Or from npm:
 
 ```sh
 dsh plugin add dsh-wsl-sidebar
 ```
 
-装完要**重启 Harness**：客户端部分在启动时打包，刷新页面不够。
+**Restart the harness afterwards**: the client half is bundled at startup, so reloading the page is not enough.
 
-本地开发则是把目录放进 profile 的 `node_modules`（或用 `link:/path/to/dsh-wsl-sidebar` 链接），并在 profile 的 `cordis.patch.yml` 里保留 `wsl-sidebar` 这一行。
+## Quickstart
 
-## 自测
+1. **Settings → WSL → Distros** — check the list, start the distribution you want, mark it default if it should answer when nothing else says otherwise.
+2. **Config** — set the `.wslconfig` or `/etc/wsl.conf` values you usually edit by hand, save, then restart the distribution when the page says so.
+3. **New session** — click **🐧 WSL 目录**, pick a folder, and the session opens on `\\wsl.localhost\...`.
+4. **Ask** — "list the files here and run the tests": the agent reaches for `wslx-run` and `wslx-search` in the distribution your workspace belongs to.
 
-四套脚本，都不需要框架：
+## Self-checks
 
-- `node scripts/rendercheck.mjs` —— 用一个小型 React（hooks、effect、`fetch` 桩）把 `client.js` 跑起来并挂载设置页，29 项断言：三个标签页、悬停配色、自绘下拉、确认流程、备份提示、停着的发行版说明、非 Windows 说明。只要 Node。
-- `node scripts/mountcheck.mjs` —— 用假 context 挂载 `apply()`，覆盖工具闸门、平台守卫、管理动作闸门，以及八个路由的假请求对象。
-- `node scripts/httpcheck.mjs` —— 起真的 `http.Server`，用 `fetch` 打同一批路由，流读取、状态码、header 和 413/400 都按 Web 服务器真实路径校验；会写 `.wslconfig` 并在退出前还原原始字节。
-- `node scripts/selfcheck.mjs [发行版]` —— 需要真 WSL：UNC 映射、`asRoot` 是否真到 uid 0、危险命令拦截、写读改往返、后台任务按 cursor 读、停着的发行版不被启动。
+Four scripts, no framework:
 
-`.github/workflows/checks.yml` 每次推送和 PR 跑语法检查加 `rendercheck`；另外三套需要真 WSL，在本地（或装了发行版的 Windows runner）跑。
+- `node scripts/rendercheck.mjs` — boots `client.js` against a small React (hooks, effects, a fake `fetch`) and mounts the Settings page: 29 assertions over the three tabs, hover colours, the drawn dropdowns, the confirmation flow, the backup notice, the stopped-distro copy and the non-Windows notice. Node only.
+- `node scripts/mountcheck.mjs` — mounts `apply()` with a fake context: tool gates, platform guard, admin-action gate, and fake request objects for all eight routes.
+- `node scripts/httpcheck.mjs` — starts a real `http.Server` and calls the routes with `fetch`, so streamed reads, status codes, headers and the 413/400 paths all go through the real web-server path. It writes `.wslconfig` and restores the original bytes on exit.
+- `node scripts/selfcheck.mjs [distro]` — needs real WSL: UNC mapping, `asRoot` actually reaching uid 0, dangerous-command blocking, write/read/edit round-trips, cursor reads on a background task, and a stopped distribution staying stopped.
 
-## 与 dsh-wsl-tool 共存
+`.github/workflows/checks.yml` runs the syntax checks and `rendercheck` on every push and pull request; the other three need real WSL and run locally (or on a Windows runner with a distribution installed).
 
-`dsh-wsl-tool` 注册的是 `wsl`、`wsl-read`、`wsl-write`、`wsl-edit` 这些名字。DSH 按名字注册工具，所以本插件刻意用 `wslx-` 前缀，两者可以同时装。只想留这一个的话，禁用 bundle 自己那一行——它的 id 是 `tool-wsl`，不是包名：
+## Limits
+
+- **Windows only.** The host half checks `process.platform` first and answers `supported: false` elsewhere, so the page explains itself instead of showing three tabs full of `wsl.exe` errors.
+- No full-screen TUI (see above).
+- One task's output beyond 1 MiB is dropped from the front, with a note in the output.
+- Tools run as the distribution's Linux user (or root with `asRoot`); there is no extra sandbox between the model and that account.
+
+## Troubleshooting
+
+- **The distro list is empty.** WSL is not installed, or `wsl.exe` on `PATH` is the Store stub. Get `wsl.exe -l -v` working in PowerShell first.
+- **A directory will not open, or `\\wsl.localhost\<distro>\...` does not resolve.** WSL 1 distributions have no UNC path; convert with `wsl --set-version <distro> 2`.
+- **The page is missing after install.** The client half is bundled at startup — restart the harness, a page reload is not enough.
+- **A Windows-side shell reports an ACL or sandbox error in a `\\wsl.localhost\...` workspace.** That share is a 9p mount with no Windows security descriptor, so the host sandbox cannot describe it. It is a platform limit, not a plugin bug; use the `wslx-*` tools there.
+- **Writing `/etc/wsl.conf` fails.** The write runs as `wsl.exe -u root`; a distribution with root login disabled (or a read-only `/etc`) refuses. Edit the file once by hand, then refresh.
+- **The directory picker refuses a distro.** It is stopped. The dialog has a start button; nothing starts implicitly.
+- **Stop or version-switch does nothing.** The deployment's default permission is not `danger-full-access`, so the first click only opens a confirmation dialog and sends nothing until you confirm.
+
+## Permissions and dangerous commands
+
+Two operations go beyond "read my files", and both need the harness to authorize them first:
+
+- **Root** (any tool's `asRoot: true`). Allowed in exactly two cases: the session is already `danger-full-access`, or the user approves this particular call through the harness's approval channel. Without an approval channel it fails closed and runs nothing — there is no silent root.
+- **Dangerous commands** (deleting a filesystem root, a home root or `/mnt/c/Windows`; `mkfs`, `dd of=/dev/*`, fork bombs, shutdown/reboot, `wsl --unregister`). Refused by default; `allowDangerous: true` states "I really mean it" and still needs `danger-full-access` or one user approval.
+
+The decision is a pure, testable function (`destructiveReason` in `lib/tools.js`), covered both ways by `node scripts/selfcheck.mjs`: `rm -rf /`, `rm -rf /*`, `rm -rf ~`, `rm -rf $HOME/*`, `rm -rf /home/hugo`, `rm -rf /mnt/c/Windows` and `wsl --unregister` are refused, while `rm -rf build`, `rm -rf /home/hugo/temp/<project>` and `git commit -m 'reboot handling'` are allowed.
+
+## Development
+
+Link the checkout into a profile's `node_modules` (or use a `link:` dependency), and keep the bundle's own line in the profile's `cordis.patch.yml`:
 
 ```yaml
-- id: tool-wsl
-  disabled: true
+- id: wsl-sidebar
+  # the bundle inserts itself under this id, not under the package name
 ```
 
-（`dsh-wsl-tool` 的 bundle 以 `tool-wsl` 插入自己，所以按 `dsh-wsl-tool` 建行是匹配不到的。）
+Restart after changing either half; the client bundle is packaged at boot.
 
-## 限制
+## Status
 
-- 只支持 Windows。Host 半先检查 `process.platform`，其他平台返回 `supported: false`，页面显示说明，而不是三个满屏 `wsl.exe` 报错的标签页。
-- 不支持全屏 TUI（见上文）。
-- 单个任务输出超过 1 MiB 会从头丢弃，并在输出里注明。
-- 工具以发行版的 Linux 用户（或 `asRoot` 时的 root）身份运行，模型与那个用户之间没有额外沙箱。
+Version 1.7.1. Tested on Windows 11 with Ubuntu 24.04 on WSL 2 (3.0.3.0), including the stopped-distribution behaviour on Arch Linux.
 
-## 排障
+## License
 
-- **发行版列表是空的。** WSL 本身没装，或 `PATH` 上的是占位程序。先在 PowerShell 里把 `wsl.exe -l -v` 跑通。
-- **目录打不开，或 `\wsl.localhost\<发行版>\...` 解析不了。** WSL 1 的发行版没有 UNC 路径，用 `wsl --set-version <发行版> 2` 转成 WSL 2。
-- **装完设置里没有。** 客户端部分在启动时打包，必须重启 Harness，刷新页面不行。
-- **`ops_bash` 在 `\wsl.localhost\...` 上报 ACL 或沙箱错误。** 那条共享是 9p 挂载，没有 Windows 安全描述符，宿主沙箱描述不了它——平台限制，不是插件 bug。请改用 `wslx-*` 工具。
-- **写 `/etc/wsl.conf` 失败。** 写入以 `wsl.exe -u root` 执行；发行版禁用了 root 登录（或 `/etc` 只读）就会拒。先手动改一次，再刷新页面。
-- **目录选择器拒绝某个发行版。** 它停着。弹窗里有「启动」按钮，点了才会启动——任何页面都不会擅自启动发行版。
-- **停止、切版本按钮点了没反应。** 部署默认权限不是 `danger-full-access`，第一次点击只打开确认弹窗，没确认前不会发出请求。
-
-## 权限与危险命令
-
-两个操作越过「读我的文件」，它们都要 DSH 先给授权：
-
-- **root 提权**（任何工具的 `asRoot: true`）。允许的条件只有两条：会话当前已是
-  `danger-full-access`，或用户在这一次调用上点了同意（走 DSH 的 approval 通道）。
-  没有审批通道时失败关闭，什么都不执行——不会再默默用 root 跑。
-- **危险命令**（删掉文件系统根、家目录根、`/mnt/c/Windows`；`mkfs`、`dd of=/dev/*`、
-  fork 炸弹、关机/重启、`wsl --unregister` 删发行版……）。默认直接拒绝；
-  `allowDangerous: true` 只是「我确实要做」的声明，仍然需要 `danger-full-access`
-  或一次用户同意。
-
-判定逻辑是可测的纯函数（`lib/tools.js` 的 `destructiveReason`），
-`node scripts/selfcheck.mjs` 里正反用例都覆盖：`rm -rf /`、`rm -rf /*`、`rm -rf ~`、
-`rm -rf $HOME/*`、`rm -rf /home/hugo`、`rm -rf /mnt/c/Windows`、`wsl --unregister` 被拦，
-`rm -rf build`、`rm -rf /home/hugo/temp/<项目>`、`git commit -m 'reboot handling'` 放行。
+MIT — see [LICENSE](LICENSE).
