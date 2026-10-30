@@ -17,14 +17,6 @@
 </p>
 
 <p align="center">
-<a href="https://ubuntu.com" title="Ubuntu"><img src="https://cdn.simpleicons.org/ubuntu/E95420" height="26" alt="Ubuntu"></a>&nbsp;
-<a href="https://www.debian.org" title="Debian"><img src="https://cdn.simpleicons.org/debian/A81D33" height="26" alt="Debian"></a>&nbsp;
-<a href="https://archlinux.org" title="Arch Linux"><img src="https://cdn.simpleicons.org/archlinux/1793D1" height="26" alt="Arch Linux"></a>&nbsp;
-<a href="https://alpinelinux.org" title="Alpine Linux"><img src="https://cdn.simpleicons.org/alpinelinux/0D597F" height="26" alt="Alpine"></a>&nbsp;
-<a href="https://get.opensuse.org" title="openSUSE"><img src="https://cdn.simpleicons.org/opensuse/73BA25" height="26" alt="openSUSE"></a>&nbsp;
-<a href="https://fedoraproject.org" title="Fedora"><img src="https://cdn.simpleicons.org/fedora/51A2DA" height="26" alt="Fedora"></a>&nbsp;
-<a href="https://kali.org" title="Kali"><img src="https://cdn.simpleicons.org/kalilinux/557C94" height="26" alt="Kali"></a>&nbsp;
-<a href="https://www.kernel.org" title="Linux"><img src="https://cdn.simpleicons.org/linux/FCC624" height="26" alt="Linux"></a>&nbsp;
 <a href="https://www.deepseek.com" title="deepseek-harness (dsh)"><img src="https://cdn.simpleicons.org/deepseek/5786FE" height="26" alt="deepseek-harness"></a>
 </p>
 
