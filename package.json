@@ -18,6 +18,11 @@
     "deepseek",
     "harness",
     "wsl",
+    "wsl2",
+    "linux",
+    "distro",
+    "bash",
+    "shell",
     "windows",
     "workspace"
   ],
@@ -37,7 +42,8 @@
     "locale/zh.json",
     "icon.svg",
     "README.md",
-    "README.zh-CN.md"
+    "README.zh-CN.md",
+    "CHANGELOG.md"
   ],
   "dsh": {
     "bundle": {

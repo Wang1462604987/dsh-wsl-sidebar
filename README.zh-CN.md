@@ -20,6 +20,10 @@
 <a href="https://www.deepseek.com" title="deepseek-harness (dsh)"><img src="https://cdn.simpleicons.org/deepseek/5786FE" height="26" alt="deepseek-harness"></a>
 </p>
 
+<p align="center">
+<img src="https://raw.githubusercontent.com/Wang1462604987/dsh-wsl-sidebar/main/assets/demo.gif" width="640" alt="新会话页点「🐧 WSL 目录」，选发行版、浏览目录，一步把 Linux 目录打开为工作区">
+</p>
+
 ---
 
 > **设计准则：** agent 从不通过 `\\wsl.localhost` 写文件。每次读、写、改、搜都是一次 `wsl.exe -d <发行版> -e bash -lc <脚本>`，读写发生在边界的 Linux 一侧，就是普通的 Linux 命令。

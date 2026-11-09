@@ -20,6 +20,10 @@
 <a href="https://www.deepseek.com" title="deepseek-harness (dsh)"><img src="https://cdn.simpleicons.org/deepseek/5786FE" height="26" alt="deepseek-harness"></a>
 </p>
 
+<p align="center">
+<img src="https://raw.githubusercontent.com/Wang1462604987/dsh-wsl-sidebar/main/assets/demo.gif" width="640" alt="Click 🐧 WSL folder on the new-session page, pick a distro, browse the directories, and open a Linux folder as a workspace">
+</p>
+
 ---
 
 > **Design rule:** the agent never writes through `\\wsl.localhost`. Every read, write, edit and search becomes one `wsl.exe -d <distro> -e bash -lc <script>`, so the work happens on the Linux side of the boundary, as ordinary Linux commands.
