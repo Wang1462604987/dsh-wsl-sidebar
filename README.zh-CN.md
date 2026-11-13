@@ -8,8 +8,8 @@
 
 <p align="center">
 <a href="https://www.npmjs.com/package/dsh-wsl-sidebar"><img src="https://img.shields.io/npm/v/dsh-wsl-sidebar.svg?style=flat-square" alt="npm"></a>
-<a href="https://github.com/Wang1462604987/dsh-wsl-sidebar/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/dsh-wsl-sidebar.svg?style=flat-square" alt="license"></a>
-<a href="https://github.com/Wang1462604987/dsh-wsl-sidebar"><img src="https://img.shields.io/badge/GitHub-Wang1462604987%2Fdsh--wsl--sidebar-181717?style=flat-square&logo=github" alt="GitHub"></a>
+<a href="https://github.com/WangJialong19/dsh-wsl-sidebar/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/dsh-wsl-sidebar.svg?style=flat-square" alt="license"></a>
+<a href="https://github.com/WangJialong19/dsh-wsl-sidebar"><img src="https://img.shields.io/badge/GitHub-WangJialong19%2Fdsh--wsl--sidebar-181717?style=flat-square&logo=github" alt="GitHub"></a>
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/Wang1462604987/dsh-wsl-sidebar/main/assets/demo.gif" width="640" alt="新会话页点「🐧 WSL 目录」，选发行版、浏览目录，一步把 Linux 目录打开为工作区">
+<img src="https://raw.githubusercontent.com/WangJialong19/dsh-wsl-sidebar/main/assets/demo.gif" width="640" alt="新会话页点「🐧 WSL 目录」，选发行版、浏览目录，一步把 Linux 目录打开为工作区">
 </p>
 
 ---
@@ -107,7 +107,7 @@
 从公开仓库装，一条命令，没有构建步骤也不需要 `allowBuilds` 确认，因为包里是原生 ESM：
 
 ```sh
-dsh plugin add github:Wang1462604987/dsh-wsl-sidebar
+dsh plugin add github:WangJialong19/dsh-wsl-sidebar
 ```
 
 或者从 npm：

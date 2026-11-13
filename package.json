@@ -6,11 +6,11 @@
   "author": "王嘉龙 <1462604987@qq.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Wang1462604987/dsh-wsl-sidebar.git"
+    "url": "git+https://github.com/WangJialong19/dsh-wsl-sidebar.git"
   },
-  "homepage": "https://github.com/Wang1462604987/dsh-wsl-sidebar#readme",
+  "homepage": "https://github.com/WangJialong19/dsh-wsl-sidebar#readme",
   "bugs": {
-    "url": "https://github.com/Wang1462604987/dsh-wsl-sidebar/issues"
+    "url": "https://github.com/WangJialong19/dsh-wsl-sidebar/issues"
   },
   "keywords": [
     "dsh",

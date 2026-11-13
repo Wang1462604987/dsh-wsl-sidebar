@@ -8,8 +8,8 @@
 
 <p align="center">
 <a href="https://www.npmjs.com/package/dsh-wsl-sidebar"><img src="https://img.shields.io/npm/v/dsh-wsl-sidebar.svg?style=flat-square" alt="npm"></a>
-<a href="https://github.com/Wang1462604987/dsh-wsl-sidebar/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/dsh-wsl-sidebar.svg?style=flat-square" alt="license"></a>
-<a href="https://github.com/Wang1462604987/dsh-wsl-sidebar"><img src="https://img.shields.io/badge/GitHub-Wang1462604987%2Fdsh--wsl--sidebar-181717?style=flat-square&logo=github" alt="GitHub"></a>
+<a href="https://github.com/WangJialong19/dsh-wsl-sidebar/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/dsh-wsl-sidebar.svg?style=flat-square" alt="license"></a>
+<a href="https://github.com/WangJialong19/dsh-wsl-sidebar"><img src="https://img.shields.io/badge/GitHub-WangJialong19%2Fdsh--wsl--sidebar-181717?style=flat-square&logo=github" alt="GitHub"></a>
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/Wang1462604987/dsh-wsl-sidebar/main/assets/demo.gif" width="640" alt="Click 🐧 WSL folder on the new-session page, pick a distro, browse the directories, and open a Linux folder as a workspace">
+<img src="https://raw.githubusercontent.com/WangJialong19/dsh-wsl-sidebar/main/assets/demo.gif" width="640" alt="Click 🐧 WSL folder on the new-session page, pick a distro, browse the directories, and open a Linux folder as a workspace">
 </p>
 
 ---
@@ -107,7 +107,7 @@ There is no pseudo-terminal, so full-screen programs such as `vim`, `top` and `h
 From the repository, one command, no build step and no `allowBuilds` confirmation, because the package is native ESM:
 
 ```sh
-dsh plugin add github:Wang1462604987/dsh-wsl-sidebar
+dsh plugin add github:WangJialong19/dsh-wsl-sidebar
 ```
 
 Or from npm:
