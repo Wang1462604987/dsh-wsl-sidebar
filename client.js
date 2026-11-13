@@ -26,6 +26,7 @@ window.__ModuleLoader__.load({
 				dialogTitle: { en: "Pick a WSL folder", zh: "选择 WSL 目录作为工作区" },
 				pick: { en: "Use this folder", zh: "选择此目录" },
 				cancel: { en: "Cancel", zh: "取消" },
+				pathHint: { en: "Edit and press Enter to jump; Tab completes; typing a folder name enters it", zh: "可编辑：输入后回车跳转；Tab 补全；输全文件夹名会直接进入" },
 				mkdir: { en: "New folder", zh: "新建文件夹" },
 				mkdirName: { en: "Folder name", zh: "文件夹名称" },
 				mkdirCreate: { en: "Create", zh: "创建" },
@@ -929,6 +930,8 @@ window.__ModuleLoader__.load({
 			const [mkdirOpen, setMkdirOpen] = React.useState(false);
 			const [mkdirName, setMkdirName] = React.useState("");
 			const [mkdirError, setMkdirError] = React.useState(null);
+			const [pathDraft, setPathDraft] = React.useState("");
+			const [pathFocused, setPathFocused] = React.useState(false);
 
 			React.useEffect(() => {
 				let alive = true;
@@ -943,6 +946,22 @@ window.__ModuleLoader__.load({
 				});
 				return () => { alive = false; };
 			}, []);
+
+			/** Canonical text of the path line for the current position. */
+			const buildPath = (name, parts) => "\\\\wsl.localhost\\" + name + (parts.length ? "\\" + parts.join("\\") : "\\");
+
+			/** "\\wsl.localhost\<distro>\<rest…>" as typed → { distro, segments } ; null when it does not parse. */
+			const parseTypedPath = (text) => {
+				const match = /^\\\\wsl\.localhost\\([^\\]+)((?:\\[^\\]*)*)$/i.exec(String(text ?? "").trim());
+				if (match === null) return null;
+				return { distro: match[1], segments: match[2].split("\\").map((part) => part.trim()).filter((part) => part.length > 0) };
+			};
+
+			// The path line is editable: keep its text in step with wherever the
+			// dialog actually is (row clicks, up button, suggestions all move it).
+			React.useEffect(() => {
+				if (distro) setPathDraft(buildPath(distro, segments));
+			}, [distro, segments]);
 
 			React.useEffect(() => {
 				if (!distro) return undefined;
@@ -1044,6 +1063,68 @@ window.__ModuleLoader__.load({
 				}
 			};
 
+			// -- editable path line -------------------------------------------
+			// Typing lives against the listing already on screen: a folder name
+			// completed exactly walks straight into it, a prefix offers the
+			// matches below the line, Tab takes the first one, Enter commits the
+			// whole typed path even where the dialog has never been.
+			const typed = parseTypedPath(pathDraft);
+			const typedSegments = typed !== null && typed.distro === distro ? typed.segments : null;
+			const typedLast = typedSegments !== null && typedSegments.length > 0 ? typedSegments[typedSegments.length - 1] : "";
+			const typedPrefix = typedSegments !== null ? typedSegments.slice(0, -1) : [];
+			const sameDir = typedPrefix !== null && typedPrefix.join("/") === segments.join("/");
+			const suggestions = pathFocused && sameDir && typedLast.length > 0
+				? dirs
+					.filter((entry) => entry.name.toLowerCase().startsWith(typedLast.toLowerCase()) && entry.name.toLowerCase() !== typedLast.toLowerCase())
+					.slice(0, 8)
+				: [];
+
+			const walkInto = (folder) => {
+				setSegments([...segments, folder]);
+				setPathFocused(false);
+			};
+
+			const onPathInput = (text) => {
+				setPathDraft(text);
+				const parsed = parseTypedPath(text);
+				if (parsed === null || parsed.distro !== distro || parsed.segments.length === 0) return;
+				const last = parsed.segments[parsed.segments.length - 1];
+				const prior = parsed.segments.slice(0, -1);
+				if (prior.join("/") !== segments.join("/") || last.length === 0) return;
+				const hit = dirs.find((entry) => entry.dir && entry.name.toLowerCase() === last.toLowerCase());
+				if (hit !== undefined) setSegments([...segments, hit.name]);
+			};
+
+			const commitPath = () => {
+				const parsed = parseTypedPath(pathDraft);
+				if (parsed === null || !distros.includes(parsed.distro)) {
+					setPathDraft(buildPath(distro, segments));
+					return;
+				}
+				if (parsed.distro !== distro) rememberDistro(parsed.distro);
+				setPathFocused(false);
+				setDistro(parsed.distro);
+				setSegments(parsed.segments);
+			};
+
+			const onPathKeyDown = (event) => {
+				if (event.key === "Enter") {
+					if (suggestions.length > 0 && typedLast.length > 0 && !typedLast.includes("\\")) {
+						const exact = dirs.find((entry) => entry.dir && entry.name.toLowerCase() === typedLast.toLowerCase());
+						if (exact !== undefined) {
+							walkInto(exact.name);
+							return;
+						}
+					}
+					commitPath();
+					return;
+				}
+				if (event.key === "Tab" && suggestions.length > 0) {
+					event.preventDefault?.();
+					walkInto(suggestions[0].name);
+				}
+			};
+
 			return h("div", {
 				style: OVERLAY_STYLE,
 				onClick: (event) => { if (event.target === event.currentTarget) onClose(); }
@@ -1060,8 +1141,39 @@ window.__ModuleLoader__.load({
 							options: distros.map((name) => ({ value: name, label: name })),
 							onChange: (name) => { setDistro(name); rememberDistro(name); setSegments([]); }
 						}),
-				distro ? h("div", { style: { display: "flex", alignItems: "center", gap: "8px" } },
-				h("div", { style: { ...STYLE.breadcrumb, flex: "1 1 auto" } }, "\\\\wsl.localhost\\" + distro + (segments.length ? "\\" + segments.join("\\") : "\\")),
+			distro ? h("div", { style: { display: "flex", alignItems: "center", gap: "8px" } },
+				h("div", { style: { position: "relative", flex: "1 1 auto" } },
+					h("input", {
+						style: { ...STYLE.input, fontSize: "11px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" },
+						value: pathDraft,
+						spellCheck: false,
+						title: t("pathHint"),
+						onChange: (event) => onPathInput(event.target.value),
+						onFocus: () => setPathFocused(true),
+						onBlur: () => { setPathFocused(false); setPathDraft(buildPath(distro, segments)); },
+						onKeyDown: onPathKeyDown
+					}),
+					suggestions.length > 0 ? h("div", {
+						style: {
+							position: "absolute", top: "calc(100% + 4px)", left: "0", right: "0", zIndex: 40,
+							display: "flex", flexDirection: "column", gap: "1px", padding: "3px",
+							borderRadius: "10px",
+							border: "1px solid var(--dsw-alias-color-border, rgba(127,127,127,.4))",
+							background: "var(--dsw-alias-color-background-secondary, rgba(23,24,27,.98))",
+							boxShadow: "0 8px 24px rgba(0,0,0,.35)", maxHeight: "180px", overflowY: "auto"
+						}
+					}, suggestions.map((entry) => h(Btn, {
+						key: entry.name,
+						onClick: () => walkInto(entry.name),
+						onMouseDown: (event) => event.preventDefault?.(),
+						title: entry.name,
+						style: {
+							padding: "4px 8px", fontSize: "12px", borderRadius: "7px", border: "none",
+							background: "transparent", color: "var(--dsw-alias-color-text-primary, inherit)",
+							cursor: "pointer", textAlign: "left"
+						},
+						hoverStyle: { background: "rgba(127,127,127,.16)" }
+					}, "📁 " + entry.name))) : null),
 				mkdirOpen
 					? null
 					: h(Btn, {

@@ -21,6 +21,9 @@ const DATA = {
 		default: "Arch"
 	},
 	"/__wsl_plugin__/distros": { distros: ["Arch", "Ubuntu-24.04"] },
+	"/__wsl_plugin__/list/Arch": { entries: [{ name: "home", dir: true }, { name: "opt", dir: true }, { name: "readme.txt", dir: false }] },
+	"/__wsl_plugin__/list/Arch/home": { entries: [{ name: "dev", dir: true }, { name: "share", dir: true }] },
+	"/__wsl_plugin__/list/Arch/home/dev": { entries: [{ name: "apps", dir: true }, { name: "notes.md", dir: false }] },
 	"/__wsl_plugin__/admin/status": {
 		wsl: { status: "默认分发: Arch\n默认版本: 2", version: "WSL 版本: 3.0.3.0" },
 		distros: [
@@ -424,19 +427,45 @@ heroTree = await settleSlot("conversation.hero.options", { ctx });
 expect(JSON.stringify(heroTree).includes("选择 WSL 目录"), "the hero chip opens the folder dialog");
 expect(JSON.stringify(heroTree).includes("发行版未运行"), "the picker says a stopped distribution was not started");
 const beforeHeroStart = actionPosts().length;
+heroStopped = false;
 clickByText(heroTree, "启动");
 heroTree = await settleSlot("conversation.hero.options", { ctx });
 expect(actionPosts().length === beforeHeroStart + 1 && actionPosts().at(-1).body.action === "start", "the picker starts the distribution only when asked");
-heroStopped = false;
+
+	// The path line is editable: a prefix offers matches, the exact folder name
+	// walks in as you type, Tab completes, Enter commits any typed path.
+	const pathLine = () => findAll(heroTree, (node) => node.type === "input")[0];
+	const dialogInputs = () => findAll(heroTree, (node) => node.type === "input");
+	const listGets = (suffix) => calls.filter((entry) => entry.startsWith("GET /__wsl_plugin__/list" + suffix)).length;
+	pathLine().props.onFocus?.();
+	pathLine().props.onChange({ target: { value: "\\\\wsl.localhost\\Arch\\ho" } });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	const homeClickables = findAll(heroTree, (node) => typeof node.props?.onClick === "function" && textOf(node) === "📁 home");
+	expect(homeClickables.length === 2, "typing a prefix offers the matching folder alongside the listing");
+	pathLine().props.onChange({ target: { value: "\\\\wsl.localhost\\Arch\\home" } });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	expect(listGets("/Arch/home") >= 1, "typing the exact folder name walks into it");
+	expect(pathLine().props.value === "\\\\wsl.localhost\\Arch\\home", "the path line follows the new position");
+	pathLine().props.onFocus?.();
+	pathLine().props.onChange({ target: { value: "\\\\wsl.localhost\\Arch\\home\\d" } });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	pathLine().props.onKeyDown?.({ key: "Tab", preventDefault() {} });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	expect(listGets("/Arch/home/dev") >= 1, "Tab completes the first suggestion");
+	pathLine().props.onFocus?.();
+	pathLine().props.onChange({ target: { value: "\\\\wsl.localhost\\Arch\\home\\dev\\apps" } });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	pathLine().props.onKeyDown?.({ key: "Enter" });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	expect(listGets("/Arch/home/dev/apps") >= 1, "Enter commits a typed path the dialog has never visited");
 
 	// The picker's new-folder affordance: create in the browsed directory, then
 	// walk into it; a name collision answers inline instead of clearing the form.
 	const mkdirPosts = () => bodies.filter((entry) => entry.path === "/__wsl_plugin__/dir/mkdir");
-	const dialogInput = () => findAll(heroTree, (node) => node.type === "input")[0];
 	clickByText(heroTree, "新建文件夹");
 	heroTree = await settleSlot("conversation.hero.options", { ctx });
-	expect(dialogInput() !== undefined, "new folder reveals a name input");
-	dialogInput().props.onChange({ target: { value: "my-project" } });
+	expect(dialogInputs().length === 2, "new folder reveals a name input");
+	dialogInputs().at(-1).props.onChange({ target: { value: "my-project" } });
 	heroTree = await settleSlot("conversation.hero.options", { ctx });
 	clickByText(heroTree, "创建");
 	heroTree = await settleSlot("conversation.hero.options", { ctx });
@@ -444,7 +473,7 @@ heroStopped = false;
 	expect(JSON.stringify(heroTree).includes("\\my-project"), "after creating, the dialog walks into the new folder");
 	clickByText(heroTree, "新建文件夹");
 	heroTree = await settleSlot("conversation.hero.options", { ctx });
-	dialogInput().props.onChange({ target: { value: "dup" } });
+	dialogInputs().at(-1).props.onChange({ target: { value: "dup" } });
 	heroTree = await settleSlot("conversation.hero.options", { ctx });
 	clickByText(heroTree, "创建");
 	heroTree = await settleSlot("conversation.hero.options", { ctx });
