@@ -26,6 +26,11 @@ window.__ModuleLoader__.load({
 				dialogTitle: { en: "Pick a WSL folder", zh: "选择 WSL 目录作为工作区" },
 				pick: { en: "Use this folder", zh: "选择此目录" },
 				cancel: { en: "Cancel", zh: "取消" },
+				mkdir: { en: "New folder", zh: "新建文件夹" },
+				mkdirName: { en: "Folder name", zh: "文件夹名称" },
+				mkdirCreate: { en: "Create", zh: "创建" },
+				mkdirExists: { en: "A folder with that name already exists here.", zh: "这里已有同名文件夹。" },
+				mkdirFailed: { en: "Could not create the folder", zh: "创建文件夹失败" },
 				createFailed: { en: "Could not create workspace", zh: "创建工作区失败" },
 				tabDistros: { en: "Distros", zh: "发行版" },
 				tabConfig: { en: "Config", zh: "配置" },
@@ -298,6 +303,7 @@ window.__ModuleLoader__.load({
 			tasks: "/__wsl_plugin__/tasks",
 			taskKill: "/__wsl_plugin__/tasks/kill",
 			terminal: "/__wsl_plugin__/terminal/open",
+			mkdir: "/__wsl_plugin__/dir/mkdir",
 			platform: "/__wsl_plugin__/platform"
 		};
 
@@ -920,6 +926,9 @@ window.__ModuleLoader__.load({
 			const [busy, setBusy] = React.useState(false);
 			const [stopped, setStopped] = React.useState(null);
 			const [reload, setReload] = React.useState(0);
+			const [mkdirOpen, setMkdirOpen] = React.useState(false);
+			const [mkdirName, setMkdirName] = React.useState("");
+			const [mkdirError, setMkdirError] = React.useState(null);
 
 			React.useEffect(() => {
 				let alive = true;
@@ -1009,6 +1018,32 @@ window.__ModuleLoader__.load({
 
 			const dirs = (entries ?? []).filter((entry) => entry.dir);
 
+			/**
+			 * Create a folder in the directory being browsed, then walk into it —
+			 * the natural "start a new project here" flow: create, land inside,
+			 * hit 选择此目录.
+			 */
+			const confirmMkdir = async () => {
+				if (!distro || busy) return;
+				setBusy(true);
+				setMkdirError(null);
+				try {
+					await postJson(ADMIN.mkdir, { distro, dir: segments.join("/"), name: mkdirName });
+					setMkdirOpen(false);
+					setMkdirName("");
+					setSegments([...segments, mkdirName.trim()]);
+				} catch (e) {
+					const code = e?.data?.code ?? null;
+					if (code === "exists") setMkdirError(t("mkdirExists"));
+					else {
+						report("mkdir-failed", { distro, segments, message: String(e?.message ?? e) });
+						setMkdirError(t("mkdirFailed") + ": " + String(e?.message ?? e));
+					}
+				} finally {
+					setBusy(false);
+				}
+			};
+
 			return h("div", {
 				style: OVERLAY_STYLE,
 				onClick: (event) => { if (event.target === event.currentTarget) onClose(); }
@@ -1025,7 +1060,33 @@ window.__ModuleLoader__.load({
 							options: distros.map((name) => ({ value: name, label: name })),
 							onChange: (name) => { setDistro(name); rememberDistro(name); setSegments([]); }
 						}),
-				distro ? h("div", { style: STYLE.breadcrumb }, "\\\\wsl.localhost\\" + distro + (segments.length ? "\\" + segments.join("\\") : "\\")) : null,
+				distro ? h("div", { style: { display: "flex", alignItems: "center", gap: "8px" } },
+				h("div", { style: { ...STYLE.breadcrumb, flex: "1 1 auto" } }, "\\\\wsl.localhost\\" + distro + (segments.length ? "\\" + segments.join("\\") : "\\")),
+				mkdirOpen
+					? null
+					: h(Btn, {
+						style: { ...STYLE.mini, flex: "0 0 auto" },
+						hoverStyle: { background: "rgba(127,127,127,.16)" },
+						onClick: () => { setMkdirOpen(true); setMkdirError(null); },
+						title: t("mkdir"),
+						disabled: busy
+					}, "＋ " + t("mkdir"))) : null,
+			distro && mkdirOpen ? h("div", { style: { display: "flex", flexDirection: "column", gap: "4px", padding: "6px 8px", borderRadius: "8px", border: "1px solid var(--dsw-alias-color-border, rgba(127,127,127,.4))" } },
+				h("div", { style: { display: "flex", gap: "6px", alignItems: "center" } },
+					h("input", {
+						style: { ...STYLE.input, flex: "1 1 auto", width: "auto" },
+						value: mkdirName,
+						placeholder: t("mkdirName"),
+						autoFocus: true,
+						onChange: (event) => setMkdirName(event.target.value),
+						onKeyDown: (event) => { if (event.key === "Enter") confirmMkdir(); }
+					}),
+					h(Btn, { style: STYLE.primary, hoverStyle: STYLE.primaryHover, onClick: confirmMkdir, disabled: busy || mkdirName.trim().length === 0 }, t("mkdirCreate")),
+					h(Btn, {
+						style: STYLE.mini, hoverStyle: { background: "rgba(127,127,127,.16)" },
+						onClick: () => { setMkdirOpen(false); setMkdirName(""); setMkdirError(null); }
+					}, t("cancel"))),
+				mkdirError ? h("div", { style: { ...STYLE.hint, color: "var(--dsw-alias-color-status-danger, #c33)" } }, mkdirError) : null) : null,
 				distro ? h("div", { style: { ...STYLE.list, flex: "1 1 auto", minHeight: "180px" } },
 					segments.length > 0
 						? h("button", { style: STYLE.row, onClick: () => setSegments(segments.slice(0, -1)), title: t("goUp") }, "… ", t("goUp"))

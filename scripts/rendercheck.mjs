@@ -102,6 +102,12 @@ g.fetch = async (url, init) => {
 	if (path === "/__wsl_plugin__/admin/action") payload = { ok: true, action: body?.action, command: "wsl.exe --" + (body?.action ?? "?"), stdout: "", stderr: "" };
 	if (path === "/__wsl_plugin__/admin/config" && method === "POST") payload = { ...DATA[path], text: body?.text ?? DATA[path].text, backup: "C:\\Users\\14626\\.wslconfig.bak-20261030-090000" };
 	if (path === "/__wsl_plugin__/terminal/open" && method === "POST") payload = { ok: true, via: "wt", distro: body?.distro ?? null };
+	if (path === "/__wsl_plugin__/dir/mkdir" && method === "POST") {
+		if (body?.name === "dup") {
+			return { ok: false, status: 409, async text() { return JSON.stringify({ ok: false, code: "exists", message: "exists" }); }, async json() { return { ok: false, code: "exists", message: "exists" }; } };
+		}
+		payload = { ok: true, distro: body?.distro ?? null, path: [...String(body?.dir ?? "").split("/").filter(Boolean), body?.name], unc: "\\\\wsl.localhost\\" + (body?.distro ?? "?") };
+	}
 	return {
 		ok: true,
 		status: 200,
@@ -422,6 +428,27 @@ clickByText(heroTree, "启动");
 heroTree = await settleSlot("conversation.hero.options", { ctx });
 expect(actionPosts().length === beforeHeroStart + 1 && actionPosts().at(-1).body.action === "start", "the picker starts the distribution only when asked");
 heroStopped = false;
+
+	// The picker's new-folder affordance: create in the browsed directory, then
+	// walk into it; a name collision answers inline instead of clearing the form.
+	const mkdirPosts = () => bodies.filter((entry) => entry.path === "/__wsl_plugin__/dir/mkdir");
+	const dialogInput = () => findAll(heroTree, (node) => node.type === "input")[0];
+	clickByText(heroTree, "新建文件夹");
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	expect(dialogInput() !== undefined, "new folder reveals a name input");
+	dialogInput().props.onChange({ target: { value: "my-project" } });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	clickByText(heroTree, "创建");
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	expect(mkdirPosts().length === 1 && mkdirPosts()[0].body.distro === "Arch" && mkdirPosts()[0].body.name === "my-project", "create asked the host for the folder in the browsed distro");
+	expect(JSON.stringify(heroTree).includes("\\my-project"), "after creating, the dialog walks into the new folder");
+	clickByText(heroTree, "新建文件夹");
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	dialogInput().props.onChange({ target: { value: "dup" } });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	clickByText(heroTree, "创建");
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	expect(JSON.stringify(heroTree).includes("这里已有同名文件夹"), "a name collision reports inline");
 
 	// The dock entry above the composer: shown only for sessions whose workspace
 	// lives inside WSL; one click opens that distro's terminal already cd'd into

@@ -10,7 +10,8 @@
 import { buildWslArgs, distroFromWindowsPath, linuxPathFromWindows, resolveDistro, runInWsl } from "../lib/wsl.js";
 import { createTools, destructiveReason } from "../lib/tools.js";
 import { readTask, startTask } from "../lib/tasks.js";
-import { distroState, listVerbose, readConfig, writeConfig } from "../lib/admin.js";
+import { distroState, listVerbose, readConfig, writeConfig, createDistroDir, validFolderName } from "../lib/admin.js";
+import { rm } from "node:fs/promises";
 
 const distro = process.argv[2] ?? "Ubuntu-24.04";
 let failures = 0;
@@ -142,6 +143,35 @@ if (idle !== undefined) {
 	check("stopped distro is still stopped", after !== "running", after);
 } else {
 	console.log("SKIP  stopped-distro config guard  (every distribution is running)");
+}
+
+// The picker's new folder: name rules are pure, creation is a real mkdir through
+// the share, a collision answers "exists", and the test cleans up after itself.
+check("folder name accepts plain names", validFolderName("my project-01") === "my project-01", String(validFolderName("my project-01")));
+check("folder name rejects separators", validFolderName("a/b") === null && validFolderName("a\\b") === null, "");
+check("folder name rejects dots/dots-only/trailing dot", validFolderName("..") === null && validFolderName("trail.") === null, "");
+check("folder name trims stray spaces", validFolderName("  spaced  ") === "spaced", String(validFolderName("  spaced  ")));
+if ((await distroState(distro)) === "running") {
+	const stamp = "wsl-sidebar-selfcheck-" + Date.now();
+	const made = await createDistroDir({ distro, segments: ["tmp"], name: stamp });
+	check("mkdir creates in the browsed directory", made.path.join("/") === "tmp/" + stamp, made.unc);
+	let collision = null;
+	try {
+		await createDistroDir({ distro, segments: ["tmp"], name: stamp });
+	} catch (error) {
+		collision = error.code ?? error.message;
+	}
+	check("mkdir collision answers exists", collision === "exists", String(collision));
+	let badName = null;
+	try {
+		await createDistroDir({ distro, segments: ["tmp"], name: "semi/colon" });
+	} catch (error) {
+		badName = error.code ?? error.message;
+	}
+	check("mkdir rejects separator names", badName === "bad-name", String(badName));
+	await rm(made.unc, { recursive: true, force: true });
+} else {
+	console.log("SKIP  real mkdir  (distribution not running)");
 }
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);

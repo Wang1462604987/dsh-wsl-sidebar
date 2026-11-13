@@ -82,6 +82,10 @@ Next to the other entry points on the new-session page there is a **🐧 WSL 目
 
 When the session's workspace lives inside WSL, a slim **🐧 WSL 终端** pill appears right above the composer. One click opens a real terminal window in **the distribution the workspace already lives in, already cd'd into the working directory** (Windows Terminal when installed, a plain console window otherwise). There is no distro picker on purpose — the workspace chose the distro when the project was opened — and sessions working on Windows directories show nothing at all. The window is independent of the Harness and survives closing the session.
 
+## New folder in the picker
+
+The session picker has a **＋ 新建文件夹 / New folder** button next to the path line: name a folder, it is created in the directory you are browsing, and the dialog walks straight into it — pick it and the new workspace opens there. Collisions answer inline; nothing is overwritten, nothing starts a stopped distribution.
+
 ## Tools
 
 | Tool | What it does |

@@ -4,6 +4,7 @@ All notable changes to `dsh-wsl-sidebar` are documented here.
 
 ## Unreleased
 
+- **The session picker can create folders.** A **＋ 新建文件夹 / New folder** button next to the path line: the folder is created in the directory you are browsing and the dialog walks straight into it, ready to open as a workspace. Collisions answer inline; a stopped distribution is reported, never started.
 - **A terminal entry sits right above the composer — but only for WSL workspaces.** When the session's workspace lives inside WSL, one click opens a real terminal window in that workspace's distribution, already cd'd into the working directory (Windows Terminal when installed, a plain console window otherwise). Sessions on Windows directories show no entry; there is no distro picker on purpose.
 - **A `wslx-run` deadline no longer kills the command.** When the deadline is reached the child is adopted as a background task: the result reports the captured output so far and names the task, which `wslx-bg` keeps readable (`action=output taskId=…`). Nothing times out into the void.
 - **The Runtime tab shows background tasks live.** Every task's id, command, state and recent output poll every five seconds, with a kill button — a long command the agent adopted stays visible (and stoppable) without asking anyone how it went.

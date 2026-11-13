@@ -15,6 +15,7 @@ import { killAllTasks, killTask, listTasks } from "./lib/tasks.js";
 import {
 	applyIniEdits,
 	configFields,
+	createDistroDir,
 	distroState,
 	distroStats,
 	exists,
@@ -37,6 +38,7 @@ const ADMIN_STATUS_PATH = "/__wsl_plugin__/admin/status";
 const TASKS_PATH = "/__wsl_plugin__/tasks";
 const TASKS_KILL_PATH = "/__wsl_plugin__/tasks/kill";
 const TERMINAL_PATH = "/__wsl_plugin__/terminal/open";
+const MKDIR_PATH = "/__wsl_plugin__/dir/mkdir";
 const PLATFORM_PATH = "/__wsl_plugin__/platform";
 
 /** WSL is a Windows feature; everything this plugin does spawns wsl.exe. */
@@ -251,6 +253,57 @@ export function apply(ctx) {
 			}
 		}
 	}), `wsl-sidebar: GET ${LIST_PREFIX}<distro>[/<path>]`);
+
+	// The picker's "new folder" affordance: one mkdir through the 9p share, into
+	// the directory the user is looking at. A single empty folder is trivially
+	// undoable, so this stays outside guardAdminAction's irreversible set — the
+	// peer-authenticated route plus the name/parent validation are the gate.
+	ctx.effect(() => ctx.webServer.register({
+		kind: "exact",
+		path: MKDIR_PATH,
+		handler: async (req, res) => {
+			if (rejected(ctx, req, res)) return;
+			if (req.method !== "POST") {
+				sendMethodNotAllowed(res, "POST");
+				return;
+			}
+			try {
+				const body = await readJsonBody(req);
+				const distro = String(body?.distro ?? "");
+				if (!validDistro(distro)) {
+					sendJson(res, 400, { ok: false, code: "bad-distro", message: `invalid distro name: ${distro}` });
+					return;
+				}
+				const segments = splitRelPath(String(body?.dir ?? ""));
+				if (segments === null) {
+					sendJson(res, 400, { ok: false, code: "bad-path", message: "dir must not contain traversal or separators" });
+					return;
+				}
+				const state = await distroState(distro);
+				if (state !== "running") {
+					sendJson(res, 409, { ok: false, code: "distro-stopped", distro, state, message: `this distribution is not running (${state})` });
+					return;
+				}
+				const created = await createDistroDir({ distro, segments, name: body?.name });
+				sendJson(res, 200, { ok: true, distro, path: created.path, unc: created.unc });
+			} catch (error) {
+				const code = error?.code ?? null;
+				if (code === "bad-name") {
+					sendJson(res, 400, { ok: false, code, message: String(error.message) });
+					return;
+				}
+				if (code === "exists") {
+					sendJson(res, 409, { ok: false, code, message: String(error.message) });
+					return;
+				}
+				if (code === "distro-stopped") {
+					sendJson(res, 409, { ok: false, code, distro: error.distro ?? null, state: error.state ?? null, message: String(error.message) });
+					return;
+				}
+				sendJson(res, 500, { ok: false, code: "mkdir-failed", message: String(error?.message ?? error) });
+			}
+		}
+	}), `wsl-sidebar: POST ${MKDIR_PATH}`);
 
 	// -- administration: distro lifecycle, configuration files, runtime numbers --
 	ctx.effect(() => ctx.webServer.register({
