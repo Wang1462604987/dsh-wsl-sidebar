@@ -99,6 +99,7 @@ Every tool accepts `asRoot: true`, which runs that one call as the distribution'
 - `output` returns only what was written after the cursor you pass, so polling a noisy task does not re-read the log.
 - `input` writes one line to stdin; `kill` sends Ctrl-C first and then kills the Windows process tree (the Linux children go with it); `list` shows every task.
 - Tasks live inside the plugin process: when the harness exits, they are gone, and no daemon is left behind. Output is capped at 1 MiB. The time-to-live defaults to 30 idle minutes and every read or write restarts it, so only an ignored task expires.
+- The settings **Runtime** tab lists these tasks live (id, command, state, recent output) and can terminate one, so a long command the agent adopted is watchable without asking. For a command expected to take minutes, the agent is told to schedule a one-time follow-up that reads the task and reports the outcome unasked.
 
 There is no pseudo-terminal, so full-screen programs such as `vim`, `top` and `htop` cannot draw. Anything that reads and writes line by line works.
 

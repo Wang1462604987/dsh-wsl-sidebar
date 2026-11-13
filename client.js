@@ -83,7 +83,14 @@ window.__ModuleLoader__.load({
 				wslStatus: { en: "wsl --status", zh: "wsl --status" },
 				noConfig: { en: "The file does not exist yet; the first save creates it.", zh: "文件尚不存在，保存时创建。" },
 				notRunningHint: { en: "Start the distro to see its numbers.", zh: "启动该发行版后才有这些数据。" },
-				defBadge: { en: "default", zh: "默认" }
+				defBadge: { en: "default", zh: "默认" },
+				bgTasks: { en: "Background tasks", zh: "后台任务" },
+				bgNone: { en: "No background tasks right now.", zh: "当前没有后台任务。" },
+				bgIdle: { en: "ends after ~30 idle minutes", zh: "空闲约 30 分钟后自动结束" },
+				bgKill: { en: "Kill", zh: "终止" },
+				bgKilled: { en: "terminated", zh: "已终止" },
+				bgExit: { en: "exit", zh: "退出码" },
+				bgTtlEnded: { en: "ended by idle TTL", zh: "空闲超时结束" }
 			};
 			return (key) => ctx.locale.resolveText(text[key]);
 		}
@@ -283,6 +290,8 @@ window.__ModuleLoader__.load({
 			action: "/__wsl_plugin__/admin/action",
 			config: "/__wsl_plugin__/admin/config",
 			status: "/__wsl_plugin__/admin/status",
+			tasks: "/__wsl_plugin__/tasks",
+			taskKill: "/__wsl_plugin__/tasks/kill",
 			platform: "/__wsl_plugin__/platform"
 		};
 
@@ -726,6 +735,7 @@ window.__ModuleLoader__.load({
 
 		function RuntimeTab({ ctx, t }) {
 			const [data, setData] = React.useState(null);
+			const [tasks, setTasks] = React.useState(null);
 			const [error, setError] = React.useState(null);
 
 			const load = React.useCallback(async () => {
@@ -739,17 +749,64 @@ window.__ModuleLoader__.load({
 				}
 			}, []);
 
+			// Background tasks are the point of this card: a long command the agent
+			// adopted should be watchable without asking anyone, so poll on a quiet
+			// interval instead of waiting for a manual refresh.
+			const loadTasks = React.useCallback(async () => {
+				try {
+					const payload = await requestJson(ADMIN.tasks);
+					setTasks(Array.isArray(payload.tasks) ? payload.tasks : []);
+				} catch {
+					setTasks(null);
+				}
+			}, []);
+
 			React.useEffect(() => {
 				load();
-			}, [load]);
+				loadTasks();
+				const timer = setInterval(loadTasks, 5000);
+				return () => clearInterval(timer);
+			}, [load, loadTasks]);
+
+			const killTask = React.useCallback(async (id) => {
+				try {
+					await postJson(ADMIN.taskKill, { id });
+				} catch {
+					/* the next poll shows the truth */
+				}
+				setTasks((current) => current?.map((task) => (task.id === id ? { ...task, running: false } : task)) ?? current);
+			}, []);
 
 			const rows = Array.isArray(data?.distros) ? data.distros : [];
+			const taskRows = Array.isArray(tasks) ? tasks : [];
+			const liveTasks = taskRows.filter((task) => task.running).length;
+			const taskState = (task) => task.running
+				? t("running") + " · " + formatDuration(task.seconds)
+				: task.timedOut
+					? t("bgTtlEnded") + " · " + formatDuration(task.seconds)
+					: t("bgExit") + " " + String(task.exitCode ?? "—") + " · " + formatDuration(task.seconds);
 
 			return h("div", { style: STYLE.body },
 				h("div", { style: STYLE.cardRow },
 					h("span", { style: STYLE.hint }, data === null ? t("loading") : t("refresh") + " · " + rows.filter((row) => row.state === "running").length + "/" + rows.length),
 					h(Btn, { style: STYLE.mini, hoverStyle: STYLE.miniHover, onClick: load }, t("refresh"))),
 				error === null ? null : h("div", { style: { ...STYLE.hint, color: "var(--dsw-alias-color-status-danger, #c33)", userSelect: "text" } }, error),
+				h("div", { style: STYLE.card },
+					h("div", { style: STYLE.cardTitle },
+						t("bgTasks"),
+						tasks !== null ? h("span", { style: STYLE.badge }, liveTasks + "/" + taskRows.length) : null),
+					taskRows.length === 0
+						? h("div", { style: STYLE.hint }, tasks === null ? t("loading") : t("bgNone"))
+						: h("div", { style: { display: "flex", flexDirection: "column", gap: "4px" } }, taskRows.map((task) =>
+							h("div", { key: task.id, style: { display: "flex", flexDirection: "column", gap: "3px", borderTop: "1px solid var(--dsw-alias-color-border, rgba(127,127,127,.25))", marginTop: "4px", paddingTop: "8px" } },
+								h("div", { style: STYLE.cardRow },
+									h("span", { style: { ...STYLE.dot, flex: "0 0 auto", background: task.running ? "var(--dsw-alias-color-status-success, #3a3)" : task.timedOut ? "var(--dsw-alias-color-status-danger, #c33)" : "var(--dsw-alias-color-text-tertiary, rgba(127,127,127,.6))" } }),
+									h("span", { style: { flex: "1 1 auto", fontFamily: "ui-monospace, monospace", fontSize: "12px", overflowWrap: "anywhere", userSelect: "text" } }, task.command),
+									task.running ? h(Btn, { style: STYLE.mini, hoverStyle: STYLE.miniHover, onClick: () => killTask(task.id) }, t("bgKill")) : null),
+								h("div", { style: STYLE.hint }, task.id + " · " + (task.distro ?? "default") + " · " + taskState(task) + (task.running ? " · " + t("bgIdle") : "")),
+								typeof task.tail === "string" && task.tail.trim().length > 0
+									? h("div", { style: { ...STYLE.code, maxHeight: "120px", overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, task.tail.trimEnd())
+									: null)))),
 				data?.wsl
 					? h("div", { style: STYLE.card },
 						h("div", { style: STYLE.cardTitle }, t("wslStatus")),

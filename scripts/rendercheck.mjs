@@ -41,6 +41,12 @@ const DATA = {
 			}
 		]
 	},
+	"/__wsl_plugin__/tasks": {
+		tasks: [
+			{ id: "t6", distro: "Arch", mode: "command", cwd: "~", asRoot: false, running: false, exitCode: 0, timedOut: false, seconds: 42, command: "npm test", tail: "all green" },
+			{ id: "t7", distro: null, mode: "command", cwd: "~/apps/blog", asRoot: false, running: true, exitCode: null, timedOut: false, seconds: 95, command: "sleep 900 && echo done", tail: "still working..." }
+		]
+	},
 	"/__wsl_plugin__/admin/config": {
 		scope: "global",
 		distro: null,
@@ -64,6 +70,10 @@ let requireAcknowledgement = false;
 let stoppedConfig = false;
 /** When set, the folder picker's distribution refuses to be listed. */
 let heroStopped = false;
+// The runtime tab polls tasks on an interval; the miniature React never runs
+// effect cleanups, so a real timer would keep this process alive forever.
+g.setInterval = () => 0;
+g.clearInterval = () => {};
 g.fetch = async (url, init) => {
 	const path = String(url).split("?")[0];
 	const method = init?.method ?? "GET";
@@ -355,6 +365,13 @@ const runtimeText = JSON.stringify(tree);
 expect(runtimeText.includes("Ubuntu-24.04"), "runtime rendered a distro");
 expect(runtimeText.includes("1.6 GB") || runtimeText.includes("GB"), "runtime rendered byte-formatted memory");
 expect(runtimeText.includes("1883"), "runtime rendered listening ports");
+expect(runtimeText.includes("后台任务"), "runtime rendered the background-task card");
+expect(runtimeText.includes("sleep 900 && echo done"), "runtime listed a running task");
+expect(runtimeText.includes("退出码 0"), "runtime showed a finished task's exit code");
+const killPosts = () => bodies.filter((entry) => entry.path === "/__wsl_plugin__/tasks/kill");
+clickByText(tree, "终止");
+tree = await settle();
+expect(killPosts().length === 1 && killPosts()[0].body.id === "t7", "the kill button posted the task id");
 
 // The folders tab is gone: only three tabs exist, and no directory browser in the page.
 const tabLabels = findAll(tree, (candidate) => candidate.props?.role === "tab").map(textOf);

@@ -10,7 +10,7 @@ import { readdir } from "node:fs/promises";
 import { listDistros } from "./lib/wsl.js";
 import { AdminActionDenied, guardAdminAction } from "./lib/policy.js";
 import { createTools } from "./lib/tools.js";
-import { killAllTasks } from "./lib/tasks.js";
+import { killAllTasks, killTask, listTasks } from "./lib/tasks.js";
 import {
 	applyIniEdits,
 	configFields,
@@ -33,6 +33,8 @@ const ADMIN_DISTROS_PATH = "/__wsl_plugin__/admin/distros";
 const ADMIN_ACTION_PATH = "/__wsl_plugin__/admin/action";
 const ADMIN_CONFIG_PATH = "/__wsl_plugin__/admin/config";
 const ADMIN_STATUS_PATH = "/__wsl_plugin__/admin/status";
+const TASKS_PATH = "/__wsl_plugin__/tasks";
+const TASKS_KILL_PATH = "/__wsl_plugin__/tasks/kill";
 const PLATFORM_PATH = "/__wsl_plugin__/platform";
 
 /** WSL is a Windows feature; everything this plugin does spawns wsl.exe. */
@@ -428,6 +430,48 @@ export function apply(ctx) {
 			}
 		}
 	}), `wsl-sidebar: GET ${ADMIN_STATUS_PATH}`);
+
+	// The panel's window onto background tasks: the same registry wslx-bg serves,
+	// so a long command the agent adopted stays visible (and stoppable) without
+	// asking the agent what happened to it.
+	ctx.effect(() => ctx.webServer.register({
+		kind: "exact",
+		path: TASKS_PATH,
+		handler: async (req, res) => {
+			if (rejected(ctx, req, res)) return;
+			if (req.method !== "GET") {
+				sendMethodNotAllowed(res, "GET");
+				return;
+			}
+			sendJson(res, 200, { tasks: listTasks({ tail: 240 }) });
+		}
+	}), `wsl-sidebar: GET ${TASKS_PATH}`);
+
+	ctx.effect(() => ctx.webServer.register({
+		kind: "exact",
+		path: TASKS_KILL_PATH,
+		handler: async (req, res) => {
+			if (rejected(ctx, req, res)) return;
+			if (req.method !== "POST") {
+				sendMethodNotAllowed(res, "POST");
+				return;
+			}
+			try {
+				const body = await readJsonBody(req);
+				const id = String(body?.id ?? "");
+				if (!/^t\d+$/.test(id)) throw new BadInput("task id must look like t12");
+				sendJson(res, 200, { ok: true, ...killTask(id) });
+			} catch (error) {
+				if (error instanceof BadInput) {
+					sendJson(res, 400, { ok: false, message: error.message });
+					return;
+				}
+				// killTask throws "unknown task" for an id that already left the
+				// registry; the panel answers that as a miss, not a server error.
+				sendJson(res, 404, { ok: false, message: String(error?.message ?? error) });
+			}
+		}
+	}), `wsl-sidebar: POST ${TASKS_KILL_PATH}`);
 
 	// The plugin's own tools: they keep the sidebar self-contained, so an agent can
 	// run commands and touch files in any distribution without another plugin.

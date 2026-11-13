@@ -5,6 +5,8 @@ All notable changes to `dsh-wsl-sidebar` are documented here.
 ## Unreleased
 
 - **A `wslx-run` deadline no longer kills the command.** When the deadline is reached the child is adopted as a background task: the result reports the captured output so far and names the task, which `wslx-bg` keeps readable (`action=output taskId=…`). Nothing times out into the void.
+- **The Runtime tab shows background tasks live.** Every task's id, command, state and recent output poll every five seconds, with a kill button — a long command the agent adopted stays visible (and stoppable) without asking anyone how it went.
+- **Long commands report themselves.** The `wslx-run` result and description tell the agent to announce the task id and, when a command is expected to take minutes, schedule a one-time follow-up (the harness `schedule_create` at about ETA + 2 minutes) that reads the task with `wslx-bg` and reports the outcome unasked.
 - **`wslx-bg` tasks now expire on idle, not on an absolute clock.** Reading or writing a running task restarts its time-to-live budget, so a task someone is still watching never dies mid-work.
 - The confirmation dialog for restricted deployments explains itself in the user's language; the host's reason stays as the detail line.
 - Documentation: animated GIF in the README (the full new-session flow), more npm keywords (`wsl2`, `linux`, `distro`, `bash`, `shell`).
