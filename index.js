@@ -7,6 +7,7 @@
  * no Windows sandbox sits between a tool and the distribution.
  */
 import { readdir } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { listDistros } from "./lib/wsl.js";
 import { AdminActionDenied, guardAdminAction } from "./lib/policy.js";
 import { createTools } from "./lib/tools.js";
@@ -35,6 +36,7 @@ const ADMIN_CONFIG_PATH = "/__wsl_plugin__/admin/config";
 const ADMIN_STATUS_PATH = "/__wsl_plugin__/admin/status";
 const TASKS_PATH = "/__wsl_plugin__/tasks";
 const TASKS_KILL_PATH = "/__wsl_plugin__/tasks/kill";
+const TERMINAL_PATH = "/__wsl_plugin__/terminal/open";
 const PLATFORM_PATH = "/__wsl_plugin__/platform";
 
 /** WSL is a Windows feature; everything this plugin does spawns wsl.exe. */
@@ -74,6 +76,39 @@ class BadInput extends Error {}
 /** Distro names are single UNC path segments; keep them conservative. */
 function validDistro(name) {
 	return /^[A-Za-z0-9][A-Za-z0-9 ._()-]*$/.test(name);
+}
+
+/**
+ * Open a real terminal window inside the distribution: Windows Terminal when it
+ * exists, a plain wsl.exe console window otherwise. Both are spawned detached so
+ * the window outlives the HTTP request, and neither output nor a hang of the
+ * spawner can hold the response: the spawn either errored (fallback) or the
+ * process is assumed handed off after a short grace period.
+ */
+function openTerminalWindow(distro) {
+	const wslArgs = distro ? ["-d", distro] : [];
+	return new Promise((resolve) => {
+		let settled = false;
+		const finish = (via) => {
+			if (settled) return;
+			settled = true;
+			resolve(via);
+		};
+		try {
+			const wt = spawn("wt.exe", ["-w", "new", ...wslArgs], { detached: true, stdio: "ignore" });
+			wt.on("error", () => {
+				const fallback = spawn("cmd.exe", ["/c", "start", "", "wsl.exe", ...wslArgs], { detached: true, stdio: "ignore" });
+				fallback.on("error", () => finish(null));
+				fallback.unref();
+				finish("console");
+			});
+			wt.unref();
+			const timer = setTimeout(() => finish("wt"), 700);
+			timer.unref?.();
+		} catch {
+			finish(null);
+		}
+	});
 }
 
 /** Split a relative POSIX path into segments, rejecting traversal. */
@@ -472,6 +507,46 @@ export function apply(ctx) {
 			}
 		}
 	}), `wsl-sidebar: POST ${TASKS_KILL_PATH}`);
+
+	// One click above the composer opens a real terminal in a distribution — for
+	// the commands a human would rather type themselves. Opening a window is not
+	// a lifecycle action, so this is not gated like start/stop; the distro name
+	// still goes through the same conservative validation.
+	ctx.effect(() => ctx.webServer.register({
+		kind: "exact",
+		path: TERMINAL_PATH,
+		handler: async (req, res) => {
+			if (rejected(ctx, req, res)) return;
+			if (req.method !== "POST") {
+				sendMethodNotAllowed(res, "POST");
+				return;
+			}
+			try {
+				const body = await readJsonBody(req);
+				let distro = null;
+				if (body?.distro !== undefined && body?.distro !== null && body.distro !== "") {
+					distro = String(body.distro);
+					if (!validDistro(distro)) throw new BadInput("distro names are single path segments");
+				}
+				if (!WINDOWS) {
+					sendJson(res, 200, { ok: false, code: "unsupported-platform", message: "WSL terminals only open on a Windows host" });
+					return;
+				}
+				const via = await openTerminalWindow(distro);
+				if (via === null) {
+					sendJson(res, 500, { ok: false, code: "terminal-open-failed", message: "neither wt.exe nor a console window could be started" });
+					return;
+				}
+				sendJson(res, 200, { ok: true, via, distro });
+			} catch (error) {
+				if (error instanceof BadInput) {
+					sendJson(res, 400, { ok: false, message: error.message });
+					return;
+				}
+				sendJson(res, 500, { ok: false, code: "terminal-open-failed", message: String(error?.message ?? error) });
+			}
+		}
+	}), `wsl-sidebar: POST ${TERMINAL_PATH}`);
 
 	// The plugin's own tools: they keep the sidebar self-contained, so an agent can
 	// run commands and touch files in any distribution without another plugin.

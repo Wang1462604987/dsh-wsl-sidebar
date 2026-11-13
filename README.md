@@ -78,6 +78,10 @@ Deliberate choices:
 
 Next to the other entry points on the new-session page there is a **🐧 WSL 目录** button. It opens a distro-and-directory picker; "choose this directory" creates a `\\wsl.localhost\<distro>\<path>` workspace and switches the draft session to it, exactly what the built-in workspace picker does for Windows directories.
 
+## Terminal entry
+
+Right above the composer there is a slim **🐧 WSL 终端** pill: one click opens a real terminal window in your default distribution (Windows Terminal when installed, a plain console window otherwise), and the chevron next to it lists every distro — running first — to open a specific one. Built for the commands you would rather type yourself; the window is independent of the Harness and survives closing the session.
+
 ## Tools
 
 | Tool | What it does |

@@ -101,6 +101,7 @@ g.fetch = async (url, init) => {
 	if (payload === undefined) payload = { entries: [], error: "ENOENT" };
 	if (path === "/__wsl_plugin__/admin/action") payload = { ok: true, action: body?.action, command: "wsl.exe --" + (body?.action ?? "?"), stdout: "", stderr: "" };
 	if (path === "/__wsl_plugin__/admin/config" && method === "POST") payload = { ...DATA[path], text: body?.text ?? DATA[path].text, backup: "C:\\Users\\14626\\.wslconfig.bak-20261030-090000" };
+	if (path === "/__wsl_plugin__/terminal/open" && method === "POST") payload = { ok: true, via: "wt", distro: body?.distro ?? null };
 	return {
 		ok: true,
 		status: 200,
@@ -421,6 +422,23 @@ clickByText(heroTree, "启动");
 heroTree = await settleSlot("conversation.hero.options", { ctx });
 expect(actionPosts().length === beforeHeroStart + 1 && actionPosts().at(-1).body.action === "start", "the picker starts the distribution only when asked");
 heroStopped = false;
+
+	// The dock entry above the composer: the chip opens the default distro's
+	// terminal, the chevron lists every distro (running first) for a specific one.
+	const terminalPosts = () => bodies.filter((entry) => entry.path === "/__wsl_plugin__/terminal/open");
+	let dockTree = await settleSlot("conversation.input.dock", { ctx });
+	expect(JSON.stringify(dockTree).includes("WSL 终端"), "the dock renders the terminal chip");
+	clickByText(dockTree, "WSL 终端");
+	dockTree = await settleSlot("conversation.input.dock", { ctx });
+	expect(terminalPosts().length === 1 && terminalPosts()[0].body.distro === undefined, "the chip asked for the default distro's terminal");
+	expect(JSON.stringify(dockTree).includes("已在 Windows Terminal 打开"), "the chip reported which terminal opened");
+	clickByText(dockTree, "▼");
+	dockTree = await settleSlot("conversation.input.dock", { ctx });
+	const dockRows = findAll(dockTree, (candidate) => typeof candidate.props?.onClick === "function" && (textOf(candidate) === "Arch默认" || textOf(candidate) === "Ubuntu-24.04")).map(textOf);
+	expect(dockRows[0] === "Ubuntu-24.04", "the distro menu lists the running distro first");
+	clickByText(dockTree, "Ubuntu-24.04");
+	dockTree = await settleSlot("conversation.input.dock", { ctx });
+	expect(terminalPosts().length === 2 && terminalPosts()[1].body.distro === "Ubuntu-24.04", "a menu row opened that distro's terminal");
 
 // A non-Windows deployment explains itself instead of spawning a missing wsl.exe.
 DATA["/__wsl_plugin__/platform"] = { platform: "linux", supported: false };
