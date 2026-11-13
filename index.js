@@ -79,14 +79,31 @@ function validDistro(name) {
 }
 
 /**
+ * A `--cd` target the client derived from the session workspace: either the
+ * Linux absolute path or "~" for the distro root. No shell is involved on the
+ * wt path (Node quotes the argument), but the cmd.exe start fallback does parse
+ * its command line, so quotes and control characters stay forbidden.
+ */
+function validTerminalCwd(raw) {
+	const value = String(raw ?? "");
+	if (value.length === 0) return null;
+	if (value !== "~" && !value.startsWith("/")) return null;
+	if (/["\x00-\x1f]/.test(value)) return null;
+	return value;
+}
+
+/**
  * Open a real terminal window inside the distribution: Windows Terminal when it
  * exists, a plain wsl.exe console window otherwise. Both are spawned detached so
  * the window outlives the HTTP request, and neither output nor a hang of the
  * spawner can hold the response: the spawn either errored (fallback) or the
- * process is assumed handed off after a short grace period.
+ * process is assumed handed off after a short grace period. `cwd` lands as
+ * `wsl --cd` so the window opens where the session is working.
  */
-function openTerminalWindow(distro) {
+function openTerminalWindow(distro, cwd) {
 	const wslArgs = distro ? ["-d", distro] : [];
+	const cd = validTerminalCwd(cwd);
+	if (cd !== null) wslArgs.push("--cd", cd);
 	return new Promise((resolve) => {
 		let settled = false;
 		const finish = (via) => {
@@ -528,16 +545,21 @@ export function apply(ctx) {
 					distro = String(body.distro);
 					if (!validDistro(distro)) throw new BadInput("distro names are single path segments");
 				}
+				let cwd = null;
+				if (body?.cwd !== undefined && body?.cwd !== null && body.cwd !== "") {
+					cwd = validTerminalCwd(body.cwd);
+					if (cwd === null) throw new BadInput("cwd must be an absolute POSIX path or ~");
+				}
 				if (!WINDOWS) {
 					sendJson(res, 200, { ok: false, code: "unsupported-platform", message: "WSL terminals only open on a Windows host" });
 					return;
 				}
-				const via = await openTerminalWindow(distro);
+				const via = await openTerminalWindow(distro, cwd);
 				if (via === null) {
 					sendJson(res, 500, { ok: false, code: "terminal-open-failed", message: "neither wt.exe nor a console window could be started" });
 					return;
 				}
-				sendJson(res, 200, { ok: true, via, distro });
+				sendJson(res, 200, { ok: true, via, distro, cwd });
 			} catch (error) {
 				if (error instanceof BadInput) {
 					sendJson(res, 400, { ok: false, message: error.message });

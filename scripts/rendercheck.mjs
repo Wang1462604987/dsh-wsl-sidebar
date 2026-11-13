@@ -423,22 +423,27 @@ heroTree = await settleSlot("conversation.hero.options", { ctx });
 expect(actionPosts().length === beforeHeroStart + 1 && actionPosts().at(-1).body.action === "start", "the picker starts the distribution only when asked");
 heroStopped = false;
 
-	// The dock entry above the composer: the chip opens the default distro's
-	// terminal, the chevron lists every distro (running first) for a specific one.
+	// The dock entry above the composer: shown only for sessions whose workspace
+	// lives inside WSL; one click opens that distro's terminal already cd'd into
+	// the working directory.
 	const terminalPosts = () => bodies.filter((entry) => entry.path === "/__wsl_plugin__/terminal/open");
-	let dockTree = await settleSlot("conversation.input.dock", { ctx });
-	expect(JSON.stringify(dockTree).includes("WSL 终端"), "the dock renders the terminal chip");
+	const dockProps = (workdir) => ({ ctx, readWorkdir: () => workdir });
+	let dockTree = await settleSlot("conversation.input.dock", dockProps("\\\\wsl.localhost\\Ubuntu-24.04\\home\\dev\\apps\\blog"));
+	expect(JSON.stringify(dockTree).includes("WSL 终端"), "the dock renders the terminal chip for a WSL workspace");
 	clickByText(dockTree, "WSL 终端");
-	dockTree = await settleSlot("conversation.input.dock", { ctx });
-	expect(terminalPosts().length === 1 && terminalPosts()[0].body.distro === undefined, "the chip asked for the default distro's terminal");
+	dockTree = await settleSlot("conversation.input.dock", dockProps("\\\\wsl.localhost\\Ubuntu-24.04\\home\\dev\\apps\\blog"));
+	expect(terminalPosts().length === 1, "the chip asked for a terminal");
+	expect(terminalPosts()[0].body.distro === "Ubuntu-24.04", "the chip used the workspace's distro");
+	expect(terminalPosts()[0].body.cwd === "/home/dev/apps/blog", "the chip opened at the workspace directory");
 	expect(JSON.stringify(dockTree).includes("已在 Windows Terminal 打开"), "the chip reported which terminal opened");
-	clickByText(dockTree, "▼");
-	dockTree = await settleSlot("conversation.input.dock", { ctx });
-	const dockRows = findAll(dockTree, (candidate) => typeof candidate.props?.onClick === "function" && (textOf(candidate) === "Arch默认" || textOf(candidate) === "Ubuntu-24.04")).map(textOf);
-	expect(dockRows[0] === "Ubuntu-24.04", "the distro menu lists the running distro first");
-	clickByText(dockTree, "Ubuntu-24.04");
-	dockTree = await settleSlot("conversation.input.dock", { ctx });
-	expect(terminalPosts().length === 2 && terminalPosts()[1].body.distro === "Ubuntu-24.04", "a menu row opened that distro's terminal");
+
+	// A Windows workspace (or an unknown one) hides the entry entirely.
+	dockTree = await settleSlot("conversation.input.dock", dockProps("E:\\project\\demo"));
+	expect(JSON.stringify(dockTree).includes("WSL 终端") === false, "a Windows workspace hides the entry");
+	dockTree = await settleSlot("conversation.input.dock", dockProps(null));
+	expect(JSON.stringify(dockTree).includes("WSL 终端") === false, "a session without a recorded workspace hides the entry");
+	dockTree = await settleSlot("conversation.input.dock", dockProps("\\\\wsl.localhost\\Arch"));
+	expect(JSON.stringify(dockTree).includes("WSL 终端"), "the distro root still shows the entry");
 
 // A non-Windows deployment explains itself instead of spawning a missing wsl.exe.
 DATA["/__wsl_plugin__/platform"] = { platform: "linux", supported: false };

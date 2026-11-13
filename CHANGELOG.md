@@ -4,7 +4,7 @@ All notable changes to `dsh-wsl-sidebar` are documented here.
 
 ## Unreleased
 
-- **A terminal entry sits right above the composer.** One click opens a real terminal window in the default distribution — Windows Terminal when installed, a plain console window otherwise — and the chevron lists every distro (running first) to open a specific one. For the commands a human would rather type themselves.
+- **A terminal entry sits right above the composer — but only for WSL workspaces.** When the session's workspace lives inside WSL, one click opens a real terminal window in that workspace's distribution, already cd'd into the working directory (Windows Terminal when installed, a plain console window otherwise). Sessions on Windows directories show no entry; there is no distro picker on purpose.
 - **A `wslx-run` deadline no longer kills the command.** When the deadline is reached the child is adopted as a background task: the result reports the captured output so far and names the task, which `wslx-bg` keeps readable (`action=output taskId=…`). Nothing times out into the void.
 - **The Runtime tab shows background tasks live.** Every task's id, command, state and recent output poll every five seconds, with a kill button — a long command the agent adopted stays visible (and stoppable) without asking anyone how it went.
 - **Long commands report themselves.** The `wslx-run` result and description tell the agent to announce the task id and, when a command is expected to take minutes, schedule a one-time follow-up (the harness `schedule_create` at about ETA + 2 minutes) that reads the task with `wslx-bg` and reports the outcome unasked.

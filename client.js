@@ -92,12 +92,10 @@ window.__ModuleLoader__.load({
 				bgExit: { en: "exit", zh: "退出码" },
 				bgTtlEnded: { en: "ended by idle TTL", zh: "空闲超时结束" },
 				termChip: { en: "WSL terminal", zh: "WSL 终端" },
-				termOpenTitle: { en: "Open a WSL terminal window", zh: "打开 WSL 终端窗口" },
-				termMenuTitle: { en: "Open in a specific distro", zh: "在指定发行版中打开" },
+				termOpenTitle: { en: "Open a terminal in this workspace's distro", zh: "在本工作区所在发行版打开终端" },
 				termOpened: { en: "Opened Windows Terminal", zh: "已在 Windows Terminal 打开" },
 				termOpenedConsole: { en: "Opened a console window (Windows Terminal not found)", zh: "已打开控制台窗口（未找到 Windows Terminal）" },
-				termFailed: { en: "Could not open a terminal", zh: "无法打开终端" },
-				termUnsupported: { en: "WSL terminals only open on Windows", zh: "只有 Windows 宿主能打开 WSL 终端" }
+				termFailed: { en: "Could not open a terminal", zh: "无法打开终端" }
 			};
 			return (key) => ctx.locale.resolveText(text[key]);
 		}
@@ -1077,110 +1075,64 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
-		 * Slim entry above the composer: one click opens a real terminal window
-		 * inside WSL — for the commands a human would rather type themselves. The
-		 * chip opens the host's default distribution; the chevron opens a menu of
-		 * all of them (running first). Rendered as a plain pill so it sits quietly
-		 * in someone else's layout.
+		 * "\\wsl.localhost\<distro>\<rest>" → { distro, cwd: "/<rest>" } ; null
+		 * when the workspace is not inside WSL. The cwd lands as `wsl --cd`, so
+		 * the window opens exactly where the session is working.
 		 */
-		function TerminalDockEntry({ ctx }) {
+		function wslFromWorkdir(path) {
+			const match = /^\\\\wsl\.localhost\\([^\\]+)(?:\\(.*))?$/i.exec(String(path ?? ""));
+			if (match === null) return null;
+			const rest = match[2] ?? "";
+			return { distro: match[1], cwd: rest.length > 0 ? "/" + rest.split("\\").filter((part) => part.length > 0).join("/") : "~" };
+		}
+
+		/**
+		 * Slim entry above the composer, shown only when the session's workspace
+		 * lives inside WSL: one click opens a real terminal window in the distro —
+		 * and directory — the session is already working in. No picker: the
+		 * workspace chose the distro when the project was opened.
+		 */
+		function TerminalDockEntry({ ctx, readWorkdir }) {
 			const t = makeT(ctx);
 			const platform = usePlatform();
-			const [menu, setMenu] = React.useState(false);
-			const [distros, setDistros] = React.useState(null);
 			const [note, setNote] = React.useState("");
+			const place = wslFromWorkdir(typeof readWorkdir === "function" ? readWorkdir() : null);
 			if (platform !== null && platform.supported === false) return null;
+			if (place === null) return null;
 
-			const open = React.useCallback(async (distro) => {
-				setMenu(false);
-				try {
-					const data = await postJson(ADMIN.terminal, distro ? { distro } : {});
-					if (data?.ok === false && data?.code === "unsupported-platform") {
-						setNote(t("termUnsupported"));
-						return;
-					}
-					setNote(data?.via === "console" ? t("termOpenedConsole") : t("termOpened"));
-				} catch (cause) {
-					report("terminal-open-failed", { message: String(cause?.message ?? cause) });
-					setNote(t("termFailed"));
-				}
-			}, []);
 			React.useEffect(() => {
 				if (note.length === 0) return undefined;
 				const timer = setTimeout(() => setNote(""), 2600);
 				return () => clearTimeout(timer);
 			}, [note]);
 
-			const toggleMenu = React.useCallback(() => {
-				if (menu) {
-					setMenu(false);
-					return;
+			const open = React.useCallback(async () => {
+				try {
+					const data = await postJson(ADMIN.terminal, { distro: place.distro, cwd: place.cwd });
+					setNote(data?.via === "console" ? t("termOpenedConsole") : t("termOpened"));
+				} catch (cause) {
+					report("terminal-open-failed", { message: String(cause?.message ?? cause) });
+					setNote(t("termFailed"));
 				}
-				setMenu(true);
-				requestJson(ADMIN.distros).then((data) => {
-					const rows = Array.isArray(data?.distros) ? [...data.distros] : [];
-					rows.sort((a, b) => Number(b.state === "running") - Number(a.state === "running"));
-					setDistros(rows);
-				}, () => setDistros([]));
-			}, [menu]);
+			}, [place.distro, place.cwd]);
 
-			const hintStyle = { padding: "6px 8px", fontSize: "12px", color: "var(--dsw-alias-color-text-secondary, inherit)" };
 			return h("div", { style: { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px", padding: "0 12px 4px" } },
 				note ? h("span", { style: { fontSize: "11px", color: "var(--dsw-alias-color-text-secondary, inherit)" } }, note) : null,
-				h("div", { style: { display: "inline-flex", alignItems: "stretch", position: "relative" } },
-					h(Btn, {
-						onClick: () => open(null),
-						title: t("termOpenTitle"),
-						style: {
-							padding: "3px 9px", fontSize: "12px", cursor: "pointer",
-							borderRadius: "999px 0 0 999px",
-							border: "1px solid var(--dsw-alias-color-border, rgba(127,127,127,.4))", borderRight: "none",
-							background: "transparent", color: "var(--dsw-alias-color-text-secondary, inherit)"
-						},
-						hoverStyle: { background: "rgba(127,127,127,.14)" }
-					}, "🐧 " + t("termChip")),
-					h(Btn, {
-						onClick: toggleMenu,
-						"aria-expanded": menu,
-						title: t("termMenuTitle"),
-						style: {
-							padding: "3px 8px", fontSize: "9px", cursor: "pointer",
-							borderRadius: "0 999px 999px 0",
-							border: "1px solid var(--dsw-alias-color-border, rgba(127,127,127,.4))",
-							background: "transparent", color: "var(--dsw-alias-color-text-secondary, inherit)"
-						},
-						hoverStyle: { background: "rgba(127,127,127,.14)" }
-					}, "▼"),
-					menu ? h("div", {
-						style: {
-							position: "absolute", bottom: "calc(100% + 6px)", right: "0", zIndex: 30,
-							display: "flex", flexDirection: "column", gap: "2px", minWidth: "190px", padding: "4px",
-							borderRadius: "10px",
-							border: "1px solid var(--dsw-alias-color-border, rgba(127,127,127,.4))",
-							background: "var(--dsw-alias-color-background-secondary, rgba(23,24,27,.98))",
-							boxShadow: "0 8px 24px rgba(0,0,0,.35)"
-						}
+				h(Btn, {
+					onClick: open,
+					title: t("termOpenTitle") + " — " + place.distro,
+					style: {
+						padding: "3px 10px", fontSize: "12px", cursor: "pointer",
+						borderRadius: "999px",
+						border: "1px solid var(--dsw-alias-color-border, rgba(127,127,127,.4))",
+						background: "transparent", color: "var(--dsw-alias-color-text-secondary, inherit)"
 					},
-						distros === null ? h("div", { style: hintStyle }, t("loading")) :
-						distros.length === 0 ? h("div", { style: hintStyle }, t("noDistros")) :
-						distros.map((row) => h(Btn, {
-							key: row.name,
-							onClick: () => open(row.name),
-							style: {
-								display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", fontSize: "12px",
-								borderRadius: "8px", border: "none", background: "transparent",
-								color: "var(--dsw-alias-color-text-primary, inherit)", cursor: "pointer", textAlign: "left"
-							},
-							hoverStyle: { background: "rgba(127,127,127,.16)" }
-						},
-							h("span", { style: { width: "7px", height: "7px", borderRadius: "999px", flex: "0 0 auto", background: row.state === "running" ? "rgba(80,200,120,.9)" : "rgba(127,127,127,.45)" } }),
-							h("span", { style: { flex: "1 1 auto" } }, row.name),
-							row.isDefault ? h("span", { style: { fontSize: "10px", padding: "1px 6px", borderRadius: "999px", border: "1px solid var(--dsw-alias-color-border, rgba(127,127,127,.4))", color: "var(--dsw-alias-color-text-secondary, inherit)" } }, t("defBadge")) : null))
-					) : null));
+					hoverStyle: { background: "rgba(127,127,127,.14)" }
+				}, "🐧 " + t("termChip")));
 		}
 
 		return {
-			inject: ["slots", "locale", "workspaces", "uiWorkspace"],
+			inject: ["slots", "locale", "workspaces", "uiWorkspace", "sessions"],
 			apply(ctx) {
 				/* Settings → WSL: one page in the settings list, not a sidebar panel. */
 				ctx.effect(() => ctx.slots.inject("settings.section", () => ctx.slots.register({
@@ -1204,7 +1156,12 @@ window.__ModuleLoader__.load({
 						return undefined;
 					}
 				});
-				/* Above the composer: one click opens a real terminal in WSL. */
+				/*
+				 * Above the composer: one click opens a real terminal in WSL. The
+				 * inject hook resolves per-session so the entry reads the working
+				 * directory of the session it is rendered in (same shape as the
+				 * official queue dock); sessions outside WSL hide the entry.
+				 */
 				ctx.effect(() => {
 					try {
 						return ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
@@ -1212,8 +1169,18 @@ window.__ModuleLoader__.load({
 							id: "wsl-terminal",
 							order: 70,
 							label: "WSL terminal",
-							locale: NS
-						}, () => h(TerminalDockEntry, { ctx })));
+							locale: NS,
+							inject: (sessionId) => ({
+								readWorkdir: () => {
+									try {
+										return ctx.sessions.list.getSnapshot()?.byId?.[sessionId]?.workingDirectory ?? null;
+									} catch (error) {
+										report("terminal-workdir-read-failed", { message: String(error?.message ?? error) });
+										return null;
+									}
+								}
+							})
+						}, (props) => h(TerminalDockEntry, { ...props, ctx })));
 					} catch (error) {
 						report("terminal-dock-register-failed", { message: String(error?.message ?? error) });
 						return undefined;

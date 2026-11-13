@@ -80,7 +80,7 @@ Next to the other entry points on the new-session page there is a **🐧 WSL 目
 
 ## Terminal entry
 
-Right above the composer there is a slim **🐧 WSL 终端** pill: one click opens a real terminal window in your default distribution (Windows Terminal when installed, a plain console window otherwise), and the chevron next to it lists every distro — running first — to open a specific one. Built for the commands you would rather type yourself; the window is independent of the Harness and survives closing the session.
+When the session's workspace lives inside WSL, a slim **🐧 WSL 终端** pill appears right above the composer. One click opens a real terminal window in **the distribution the workspace already lives in, already cd'd into the working directory** (Windows Terminal when installed, a plain console window otherwise). There is no distro picker on purpose — the workspace chose the distro when the project was opened — and sessions working on Windows directories show nothing at all. The window is independent of the Harness and survives closing the session.
 
 ## Tools
 
