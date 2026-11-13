@@ -26,7 +26,7 @@ window.__ModuleLoader__.load({
 				dialogTitle: { en: "Pick a WSL folder", zh: "选择 WSL 目录作为工作区" },
 				pick: { en: "Use this folder", zh: "选择此目录" },
 				cancel: { en: "Cancel", zh: "取消" },
-				pathHint: { en: "Edit and press Enter to jump; Tab completes; typing a folder name enters it", zh: "可编辑：输入后回车跳转；Tab 补全；输全文件夹名会直接进入" },
+				pathHint: { en: "Type to jump: Tab or ↑↓+Enter completes; a full folder name enters it directly", zh: "可编辑：Tab 或 ↑↓+Enter 补全进入；输全文件夹名会直接进入；回车提交整条路径" },
 				mkdir: { en: "New folder", zh: "新建文件夹" },
 				mkdirName: { en: "Folder name", zh: "文件夹名称" },
 				mkdirCreate: { en: "Create", zh: "创建" },
@@ -932,6 +932,7 @@ window.__ModuleLoader__.load({
 			const [mkdirError, setMkdirError] = React.useState(null);
 			const [pathDraft, setPathDraft] = React.useState("");
 			const [pathFocused, setPathFocused] = React.useState(false);
+			const [suggestIdx, setSuggestIdx] = React.useState(-1);
 
 			React.useEffect(() => {
 				let alive = true;
@@ -1066,8 +1067,9 @@ window.__ModuleLoader__.load({
 			// -- editable path line -------------------------------------------
 			// Typing lives against the listing already on screen: a folder name
 			// completed exactly walks straight into it, a prefix offers the
-			// matches below the line, Tab takes the first one, Enter commits the
-			// whole typed path even where the dialog has never been.
+			// matches below the line, ↑/↓ move the highlight, Tab takes the
+			// first one, Enter takes the highlighted one (or commits the whole
+			// typed path, even where the dialog has never been).
 			const typed = parseTypedPath(pathDraft);
 			const typedSegments = typed !== null && typed.distro === distro ? typed.segments : null;
 			const typedLast = typedSegments !== null && typedSegments.length > 0 ? typedSegments[typedSegments.length - 1] : "";
@@ -1078,21 +1080,26 @@ window.__ModuleLoader__.load({
 					.filter((entry) => entry.name.toLowerCase().startsWith(typedLast.toLowerCase()) && entry.name.toLowerCase() !== typedLast.toLowerCase())
 					.slice(0, 8)
 				: [];
+			const highlighted = suggestions.length > 0 ? Math.min(Math.max(suggestIdx, -1), suggestions.length - 1) : -1;
 
 			const walkInto = (folder) => {
+				setSuggestIdx(-1);
 				setSegments([...segments, folder]);
-				setPathFocused(false);
 			};
 
 			const onPathInput = (text) => {
 				setPathDraft(text);
+				setSuggestIdx(-1);
 				const parsed = parseTypedPath(text);
 				if (parsed === null || parsed.distro !== distro || parsed.segments.length === 0) return;
 				const last = parsed.segments[parsed.segments.length - 1];
 				const prior = parsed.segments.slice(0, -1);
 				if (prior.join("/") !== segments.join("/") || last.length === 0) return;
 				const hit = dirs.find((entry) => entry.dir && entry.name.toLowerCase() === last.toLowerCase());
-				if (hit !== undefined) setSegments([...segments, hit.name]);
+				if (hit !== undefined) {
+					setSuggestIdx(-1);
+					setSegments([...segments, hit.name]);
+				}
 			};
 
 			const commitPath = () => {
@@ -1102,13 +1109,27 @@ window.__ModuleLoader__.load({
 					return;
 				}
 				if (parsed.distro !== distro) rememberDistro(parsed.distro);
-				setPathFocused(false);
+				setSuggestIdx(-1);
 				setDistro(parsed.distro);
 				setSegments(parsed.segments);
 			};
 
 			const onPathKeyDown = (event) => {
+				if (event.key === "ArrowDown" && suggestions.length > 0) {
+					event.preventDefault?.();
+					setSuggestIdx(Math.min(highlighted + 1, suggestions.length - 1));
+					return;
+				}
+				if (event.key === "ArrowUp" && suggestions.length > 0) {
+					event.preventDefault?.();
+					setSuggestIdx(Math.max(highlighted - 1, -1));
+					return;
+				}
 				if (event.key === "Enter") {
+					if (suggestions.length > 0 && highlighted >= 0) {
+						walkInto(suggestions[highlighted].name);
+						return;
+					}
 					if (suggestions.length > 0 && typedLast.length > 0 && !typedLast.includes("\\")) {
 						const exact = dirs.find((entry) => entry.dir && entry.name.toLowerCase() === typedLast.toLowerCase());
 						if (exact !== undefined) {
@@ -1150,7 +1171,7 @@ window.__ModuleLoader__.load({
 						title: t("pathHint"),
 						onChange: (event) => onPathInput(event.target.value),
 						onFocus: () => setPathFocused(true),
-						onBlur: () => { setPathFocused(false); setPathDraft(buildPath(distro, segments)); },
+						onBlur: () => { setPathFocused(false); setSuggestIdx(-1); setPathDraft(buildPath(distro, segments)); },
 						onKeyDown: onPathKeyDown
 					}),
 					suggestions.length > 0 ? h("div", {
@@ -1162,14 +1183,15 @@ window.__ModuleLoader__.load({
 							background: "var(--dsw-alias-color-background-secondary, rgba(23,24,27,.98))",
 							boxShadow: "0 8px 24px rgba(0,0,0,.35)", maxHeight: "180px", overflowY: "auto"
 						}
-					}, suggestions.map((entry) => h(Btn, {
+					}, suggestions.map((entry, index) => h(Btn, {
 						key: entry.name,
 						onClick: () => walkInto(entry.name),
 						onMouseDown: (event) => event.preventDefault?.(),
 						title: entry.name,
 						style: {
 							padding: "4px 8px", fontSize: "12px", borderRadius: "7px", border: "none",
-							background: "transparent", color: "var(--dsw-alias-color-text-primary, inherit)",
+							background: index === highlighted ? "rgba(127,127,127,.16)" : "transparent",
+							color: "var(--dsw-alias-color-text-primary, inherit)",
 							cursor: "pointer", textAlign: "left"
 						},
 						hoverStyle: { background: "rgba(127,127,127,.16)" }

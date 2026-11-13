@@ -86,7 +86,7 @@ When the session's workspace lives inside WSL, a slim **🐧 WSL 终端** pill a
 
 The session picker has a **＋ 新建文件夹 / New folder** button next to the path line: name a folder, it is created in the directory you are browsing, and the dialog walks straight into it — pick it and the new workspace opens there. Collisions answer inline; nothing is overwritten, nothing starts a stopped distribution.
 
-The path line itself is **editable**: type and it autocompletes against the listing already on screen (suggestions drop down below the line, Tab takes the first), a fully typed folder name enters it the moment it matches, and Enter commits any path — including directories the dialog has never visited, or another distribution's. Huge trees no longer mean clicking through twenty levels.
+The path line itself is **editable**: type and it autocompletes against the listing already on screen (suggestions drop down below the line; **↑/↓** move the highlight, **Enter** opens the highlighted one, **Tab** takes the first), a fully typed folder name enters it the moment it matches, and Enter with nothing highlighted commits any path — including directories the dialog has never visited, or another distribution's. Huge trees no longer mean clicking through twenty levels.
 
 ## Tools
 

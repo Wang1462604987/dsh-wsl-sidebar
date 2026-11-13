@@ -22,7 +22,7 @@ const DATA = {
 	},
 	"/__wsl_plugin__/distros": { distros: ["Arch", "Ubuntu-24.04"] },
 	"/__wsl_plugin__/list/Arch": { entries: [{ name: "home", dir: true }, { name: "opt", dir: true }, { name: "readme.txt", dir: false }] },
-	"/__wsl_plugin__/list/Arch/home": { entries: [{ name: "dev", dir: true }, { name: "share", dir: true }] },
+	"/__wsl_plugin__/list/Arch/home": { entries: [{ name: "dev", dir: true }, { name: "share", dir: true }, { name: "downloads", dir: true }] },
 	"/__wsl_plugin__/list/Arch/home/dev": { entries: [{ name: "apps", dir: true }, { name: "notes.md", dir: false }] },
 	"/__wsl_plugin__/admin/status": {
 		wsl: { status: "默认分发: Arch\n默认版本: 2", version: "WSL 版本: 3.0.3.0" },
@@ -449,15 +449,35 @@ expect(actionPosts().length === beforeHeroStart + 1 && actionPosts().at(-1).body
 	pathLine().props.onFocus?.();
 	pathLine().props.onChange({ target: { value: "\\\\wsl.localhost\\Arch\\home\\d" } });
 	heroTree = await settleSlot("conversation.hero.options", { ctx });
-	pathLine().props.onKeyDown?.({ key: "Tab", preventDefault() {} });
+	// ↑/↓ walk the suggestion list; Enter takes the highlighted row.
+	const suggestionRow = (name) => findAll(heroTree, (node) => typeof node.props?.onMouseDown === "function" && textOf(node) === "📁 " + name)[0];
+	pathLine().props.onKeyDown?.({ key: "ArrowDown", preventDefault() {} });
 	heroTree = await settleSlot("conversation.hero.options", { ctx });
-	expect(listGets("/Arch/home/dev") >= 1, "Tab completes the first suggestion");
-	pathLine().props.onFocus?.();
-	pathLine().props.onChange({ target: { value: "\\\\wsl.localhost\\Arch\\home\\dev\\apps" } });
+	expect(suggestionRow("dev")?.props?.style?.background === "rgba(127,127,127,.16)", "ArrowDown highlights the first suggestion");
+	pathLine().props.onKeyDown?.({ key: "ArrowDown", preventDefault() {} });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	expect(suggestionRow("downloads")?.props?.style?.background === "rgba(127,127,127,.16)", "ArrowDown moves the highlight to the next suggestion");
+	pathLine().props.onKeyDown?.({ key: "ArrowUp", preventDefault() {} });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	expect(suggestionRow("dev")?.props?.style?.background === "rgba(127,127,127,.16)", "ArrowUp moves the highlight back");
+	pathLine().props.onKeyDown?.({ key: "ArrowDown", preventDefault() {} });
 	heroTree = await settleSlot("conversation.hero.options", { ctx });
 	pathLine().props.onKeyDown?.({ key: "Enter" });
 	heroTree = await settleSlot("conversation.hero.options", { ctx });
-	expect(listGets("/Arch/home/dev/apps") >= 1, "Enter commits a typed path the dialog has never visited");
+	expect(listGets("/Arch/home/downloads") >= 1, "Enter opens the highlighted suggestion");
+	// Back to home/dev, then Tab still takes the first suggestion.
+	pathLine().props.onFocus?.();
+	pathLine().props.onChange({ target: { value: "\\\\wsl.localhost\\Arch\\home\\dev" } });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	pathLine().props.onKeyDown?.({ key: "Enter" });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	expect(listGets("/Arch/home/dev") >= 1, "Enter commits a typed path the dialog has never visited");
+	pathLine().props.onFocus?.();
+	pathLine().props.onChange({ target: { value: "\\\\wsl.localhost\\Arch\\home\\dev\\a" } });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	pathLine().props.onKeyDown?.({ key: "Tab", preventDefault() {} });
+	heroTree = await settleSlot("conversation.hero.options", { ctx });
+	expect(listGets("/Arch/home/dev/apps") >= 1, "Tab completes the first suggestion");
 
 	// The picker's new-folder affordance: create in the browsed directory, then
 	// walk into it; a name collision answers inline instead of clearing the form.
