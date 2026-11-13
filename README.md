@@ -82,7 +82,7 @@ Next to the other entry points on the new-session page there is a **🐧 WSL 目
 
 | Tool | What it does |
 | --- | --- |
-| `wslx-run` | Run a bash command inside a distribution (`rg`, `git`, `make`, `python3`…); optional `workdir` and `timeoutMs`; dangerous commands are intercepted. |
+| `wslx-run` | Run a bash command inside a distribution (`rg`, `git`, `make`, `python3`…); optional `workdir` and `timeoutMs`; dangerous commands are intercepted. A deadline does not kill the command — it moves to a background task. |
 | `wslx-read` | Read a file with line numbers, 2000 lines per call. |
 | `wslx-write` | Write a whole file through a Linux-side stdin pipe. |
 | `wslx-edit` | Replace one exact string; the file's mode and owner stay unchanged. |
@@ -98,7 +98,7 @@ Every tool accepts `asRoot: true`, which runs that one call as the distribution'
 - `start` with `mode=command` runs a bash command, and its output stays readable after it finishes; `mode=shell` keeps an interactive `bash -i`, so `python3 -i`, `psql`, `ssh`, an MQTT client and a `sudo` password prompt all work a line at a time.
 - `output` returns only what was written after the cursor you pass, so polling a noisy task does not re-read the log.
 - `input` writes one line to stdin; `kill` sends Ctrl-C first and then kills the Windows process tree (the Linux children go with it); `list` shows every task.
-- Tasks live inside the plugin process: when the harness exits, they are gone, and no daemon is left behind. Output is capped at 1 MiB and the default time-to-live is 30 minutes.
+- Tasks live inside the plugin process: when the harness exits, they are gone, and no daemon is left behind. Output is capped at 1 MiB. The time-to-live defaults to 30 idle minutes and every read or write restarts it, so only an ignored task expires.
 
 There is no pseudo-terminal, so full-screen programs such as `vim`, `top` and `htop` cannot draw. Anything that reads and writes line by line works.
 

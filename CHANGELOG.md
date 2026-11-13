@@ -4,10 +4,10 @@ All notable changes to `dsh-wsl-sidebar` are documented here.
 
 ## Unreleased
 
-Documentation only; no behavior change.
-
-- Animated GIF in the README: the full new-session flow — click 🐧 **WSL folder**, pick a distro, browse, open the workspace.
-- More npm keywords (`wsl2`, `linux`, `distro`, `bash`, `shell`) so the plugin is easier to find.
+- **A `wslx-run` deadline no longer kills the command.** When the deadline is reached the child is adopted as a background task: the result reports the captured output so far and names the task, which `wslx-bg` keeps readable (`action=output taskId=…`). Nothing times out into the void.
+- **`wslx-bg` tasks now expire on idle, not on an absolute clock.** Reading or writing a running task restarts its time-to-live budget, so a task someone is still watching never dies mid-work.
+- The confirmation dialog for restricted deployments explains itself in the user's language; the host's reason stays as the detail line.
+- Documentation: animated GIF in the README (the full new-session flow), more npm keywords (`wsl2`, `linux`, `distro`, `bash`, `shell`).
 
 ## 1.7.2 — 2026-10-30
 

@@ -58,6 +58,10 @@ window.__ModuleLoader__.load({
 				},
 				confirmShutdownTitle: { en: "Restart WSL?", zh: "确认重启 WSL?" },
 				confirmTitle: { en: "This cannot be undone", zh: "此操作不可撤销" },
+				confirmAckBody: {
+					en: "This deployment does not run in danger-full-access, so irreversible WSL actions need your explicit confirmation.",
+					zh: "当前部署不是 danger-full-access 模式，不可撤销的 WSL 操作需要你明确确认。"
+				},
 				confirmRun: { en: "Run it", zh: "确认执行" },
 				backupAt: { en: "Previous contents kept at", zh: "上一份内容已备份到" },
 				unsupported: { en: "WSL only exists on Windows", zh: "WSL 只在 Windows 上存在" },
@@ -411,7 +415,10 @@ window.__ModuleLoader__.load({
 					if (body.action === "export") setExportTarget(null);
 				} catch (error) {
 					if (error?.data?.code === "needs-acknowledge") {
-						setConfirmAsk({ body, message: String(error.data.message ?? "") });
+						// The host sentence is English-only; the panel explains in the
+						// user's language and keeps the host reason as the detail line.
+						const reason = String(error.data.message ?? "");
+						setConfirmAsk({ body, message: t("confirmAckBody") + (reason.length > 0 ? "\n\n" + reason : "") });
 						return;
 					}
 					const detail = error?.data?.stderr || error?.data?.stdout || "";

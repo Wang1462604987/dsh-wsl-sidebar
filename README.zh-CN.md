@@ -82,7 +82,7 @@
 
 | 工具 | 作用 |
 | --- | --- |
-| `wslx-run` | 在发行版里跑 bash 命令（`rg`、`git`、`make`、`python3`……），可选 `workdir`、`timeoutMs`，带危险命令拦截 |
+| `wslx-run` | 在发行版里跑 bash 命令（`rg`、`git`、`make`、`python3`……），可选 `workdir`、`timeoutMs`，带危险命令拦截；超时不会杀命令，而是转入后台任务 |
 | `wslx-read` | 读文件并带行号，每次 2000 行 |
 | `wslx-write` | 通过 Linux 侧 stdin 管道整篇写文件 |
 | `wslx-edit` | 替换一段精确文本，文件的 mode 与属主保持不变 |
